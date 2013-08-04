@@ -62,6 +62,7 @@ class Prometheus(object):
 
     def __init__(self):
         super (Prometheus, self).__init__()
+        self.server = PrometheusServer(self.server_status, self.server_activity)
 
     def init_visual(self):
         """
@@ -87,8 +88,10 @@ class Prometheus(object):
         """
         pass
 
-    def server_status(self, connected):
+    def shutdown_server(self):
+        self.server.shutdown()
 
+    def server_status(self, connected):
         if connected:
             print "Server is connected"
         else:
