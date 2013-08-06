@@ -25,8 +25,8 @@
 
 import sys
 import os
-import signal
 import time
+import signal
 
 import usb.core
 import usb.util
@@ -43,6 +43,19 @@ from defines import FX3_PID
 from fx3_controller import FX3ControllerError
 from fx3_controller import FX3Controller
 
+def enum(*sequential, **named):
+  enums = dict(zip(sequential, range(len(sequential))), **named)
+  return type('Enum', (), enums)
+
+USB_STATUS = enum ('FX3_CONNECTED',
+                   'FX3_NOT_CONNECTED',
+                   'FX3_PROGRAMMING_FAILED',
+                   'FX3_PROGRAMMING_PASSED',
+                   'BUSY',
+                   'USER_APPLICATION')
+
+
+
 class PrometheusUSBError(Exception):
     pass
 
@@ -50,13 +63,16 @@ class PrometheusUSB(object):
     """
     Class to handle communication between the processor and host computer
     """
-    def __init__(self):
+    def __init__(self,
+                 usb_device_status_cb):
         super (PrometheusUSB, self).__init__()
         self.cypress_fx3_dev = None
         self.prometheus_dev = None
+        self.usb_device_status_cb = usb_device_status_cb
+        self.status = USB_STATUS.FX3_NOT_CONNECTED
+
         #Set up events
         signal.signal(signal.SIGUSR1, self.user1_event)
-        signal.signal(signal.SIGUSR2, self.user2_event)
         try:
             self.connect_to_cypress_fx3()
         except PrometheusUSBError, err:
@@ -81,34 +97,48 @@ class PrometheusUSB(object):
             print "USB Error: %s" % str(err)
             return None
         #Activate the device (to the control configuratio)
+        if dev is None:
+            self._set_status(USB_STATUS.FX3_NOT_CONNECTED)
+            return
         dev.set_configuration()
+        self._set_status(USB_STATUS.FX3_CONNECTED)
         return dev
 
     def connect_to_cypress_fx3(self):
         self.cypress_fx3_dev = None
         self.cypress_fx3_dev = self.get_usb_device(CYPRESS_VID, FX3_PID)
         if self.cypress_fx3_dev is None:
+            self._set_status(USB_STATUS.FX3_NOT_CONNECTED)
             raise PrometheusUSBError("Cypress FX3 Not Found")
+
+        self.cypress_fx3_dev.set_configuration()
         self.fx3 = FX3Controller(self.cypress_fx3_dev)
+        self._set_status(USB_STATUS.FX3_CONNECTED)
+
+    def is_connected(self):
+        if self.fx3 is None:
+            return False
+        return True
 
     def user1_event(self, signal_number, frame):
-        print "User 1 Event"
+        #print "User 1 Event"
         try:
-            usb_devices = self.list_usb_devices()
             print "USB Devices: %s" % str(usb_devices)
+            usb_devices = self.list_usb_devices()
             self.connect_to_cypress_fx3()
-            print "Connected to Cypress FX3"
+            #print "Connected to Cypress FX3"
+            self._set_status(USB_STATUS.FX3_CONNECTED)
         except PrometheusUSBError, err:
-            pass
-
-    def user2_event(self, signal_number, frame):
-        print "User 2 Event"
+            self._set_status(USB_STATUS.FX3_NOT_CONNECTED)
 
     def download_program(self, buf):
         if self.cypress_fx3_dev is not None:
             try:
+                self._set_status(USB_STATUS.BUSY)
                 self.fx3.download(buf)
+                self._set_status(USB_STATUS.FX3_PROGRAMMING_PASSED)
             except FX3ControllerError, err:
+                self._set_status(USB_STATUS.FX3_PROGRAMMING_FAILED)
                 raise PrometheusUSBError("Error Programming FX3: %s" % str(err))
         else:
             raise PrometheusUSBError("FX3 Not Connected")
@@ -117,6 +147,14 @@ class PrometheusUSB(object):
         if dev is None:
             raise PrometheusUSBError("Error: There is no USB Device connected to reset")
         self.dev.reset()
+
+    def _set_status(self, status):
+        self.status = status
+        if self.usb_device_status_cb is not None:
+            self.usb_device_status_cb(self.status)
+
+    def get_usb_status(self):
+        return self.status
 
 
 
