@@ -4,13 +4,11 @@ pid=`pidof cyusb_linux`
 #Call the standard cypress controller
 if [ "$pid" ]; then
     kill -s SIGUSR1 $pid
-    exit
 fi
 
 pid=`pidof -x prometheus.py`
 if [ "$pid" ]; then
     kill -s SIGUSR1 $pid
-    exit
 fi
 
 #This is only used for debug
