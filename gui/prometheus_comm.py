@@ -30,8 +30,73 @@ class PrometheusComm (QWidget):
 
     def __init__(self, prometheus):
         super(PrometheusComm, self).__init__()
-        layout = QGridLayout()
-        layout.addWidget(QLabel("Comm"), 0, 0, 1, 1)
+        self.prometheus = prometheus
+        layout = QVBoxLayout()
+        self.comm = QTextEdit()
+        self.in_command = QLineEdit()
+        self.send_button = QPushButton("Send")
+        layout.addWidget(QLabel("Comm"))
+        layout.addWidget(self.comm)
+
+        command_layout = QHBoxLayout()
+
+        command_layout.addWidget(self.in_command)
+        command_layout.addWidget(self.send_button)
+        layout.addLayout(command_layout)
+        
         self.setLayout(layout)
 
+        self.text_cursor = self.comm.textCursor()
+
+        self.origin_format = QTextCharFormat()
+        self.origin_format.setForeground(Qt.black)
+        self.origin_format.setBackground(Qt.white)
+        self.origin_format.setFontWeight(QFont.Bold)
+        #self.origin_format.setFontUnderline(True)
+
+        self.out_format = QTextCharFormat()
+        self.out_format.setForeground(Qt.black)
+        self.out_format.setBackground(Qt.white)
+
+        self.in_format = QTextCharFormat()
+        self.in_format.setForeground(Qt.black)
+        self.in_format.setBackground(Qt.gray)
+
+        self.connect(self.send_button, SIGNAL("clicked()"), self.send_pressed)
+        self.connect(self.in_command, SIGNAL("returnPressed()"), self.send_pressed)
+
+    def insert_text(self, origin, text, text_format = None):
+        if text_format is None:
+            text_format = self.plain_format
+        text = " %s" % text
+
+        if not text.endswith("\n"):
+            text += "\n"
+
+        if origin:
+            self.text_cursor.insertText("%s:" % origin, self.origin_format)
+            self.comm.moveCursor(QTextCursor.End)
+
+        self.text_cursor.insertText(text, text_format)
+        verticalScroll = self.comm.verticalScrollBar()
+        actualValue = verticalScroll.value()
+        maxValue = verticalScroll.maximum()
+        self.comm.moveCursor(QTextCursor.End)
+
+    def out_data(self, text):
+        #text = "Host: %s" % text
+        self.insert_text("Host", text, self.out_format)
+
+    def in_data(self, text):
+        #text = "Device: %s" % text
+        self.insert_text("Device", text, self.in_format)
+
+
+    def send_pressed(self):
+        #print "send pressed"
+        text = self.in_command.text()
+        self.in_command.setText("")
+        if len(text) > 0:
+            self.out_data(text)
+            self.prometheus.host_to_device_comm(text)
 

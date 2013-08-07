@@ -276,10 +276,16 @@ class Prometheus(object):
             #Send status update
             self.control_server_status = SERVER_CONNECTED
             status = self.status_string()
+            self.status(1, "Status server connected")
             self.server.send_status(status)
+            if self.gui:
+                self.gui.status_server_connected()
         else:
             #print "program status is disconnected"
             self.control_server_status = SERVER_NOT_CONNECTED
+            self.status(1, "Status server disconnected")
+            if self.gui:
+                self.gui.status_server_disconnected()
 
         self.status(2, control_server_status)
 
@@ -312,11 +318,17 @@ class Prometheus(object):
         This is called when a client either connects or disconnects
         """
         if connected is not None:
-            print "Server is connected"
+            #print "Server is connected"
+            self.status(1, "Client connected to data server")
             self.data_server_status = SERVER_CONNECTED
+            if self.gui:
+                self.gui.data_server_connected()
         else:
-            print "Server is not connected"
+            #print "Server is not connected"
+            self.status(1, "Client disconnected to data server")
             self.data_server_status = SERVER_NOT_CONNECTED
+            if self.gui:
+                self.gui.data_server_disconnected()
 
         self.status(2, self.data_server_status)
         #Now analyze the data that came in over the server
@@ -362,6 +374,10 @@ class Prometheus(object):
                 self.usb_status = USB_USER_APPLICATION
                 self.status(2, self.usb_status)
         #print "USB Main Callback Finished"
+
+    def host_to_device_comm(self, text):
+        #Write data to the device
+        self.status(0, "Write Data to the device")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(

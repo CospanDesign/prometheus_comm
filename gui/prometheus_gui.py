@@ -48,11 +48,13 @@ class PrometheusGui (QWidget):
         status_layout = QVBoxLayout()
         self.programmer = PrometheusProgrammer(self.prometheus)
         self.status = PrometheusStatus(self.prometheus)
-        self.server_status = PrometheusServerStatus(self.prometheus)
+        self.status_server = PrometheusServerStatus(self.prometheus, "Status Server")
+        self.data_server = PrometheusServerStatus(self.prometheus, "Data Server")
 
         status_layout.addWidget(self.status)
         status_layout.addWidget(self.programmer)
-        status_layout.addWidget(self.server_status)
+        status_layout.addWidget(self.status_server)
+        status_layout.addWidget(self.data_server)
 
         layout.addItem(status_layout)
 
@@ -77,6 +79,22 @@ class PrometheusGui (QWidget):
     def usb_disconnected(self):
         if self.programmer:
             self.programmer.usb_disconnected()
+
+    def status_server_connected(self):
+        if self.status_server:
+            self.status_server.connected()
+
+    def status_server_disconnected(self):
+        if self.status_server:
+            self.status_server.disconnected()
+
+    def data_server_connected(self):
+        if self.data_server:
+            self.data_server.conected()
+
+    def data_server_disconnected(self):
+        if self.data_server:
+            self.data_server.disconnected()
 
     def closeEvent(self, event):
         self.prometheus.shutdown_server()

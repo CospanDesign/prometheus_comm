@@ -86,8 +86,7 @@ class PrometheusStatus (QWidget):
         verticalScroll = self.output.verticalScrollBar()
         actualValue = verticalScroll.value()
         maxValue = verticalScroll.maximum()
-        if actualValue == maxValue:
-            self.output.moveCursor(QTextCursor.End)
+        self.output.moveCursor(QTextCursor.End)
 
     def verbose(self, text):
         text = "Verbose: %s" % text

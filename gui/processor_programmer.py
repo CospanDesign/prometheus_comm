@@ -32,6 +32,9 @@ sys.path.append(os.path.join(os.path.dirname(__file__),
 
 from usb_server.prometheus_usb import PrometheusUSBError
 
+from defines import UNCONNECTED_COLOR
+from defines import CONNECTED_COLOR
+
 class ProcessorProgrammerError(Exception):
     pass
 
@@ -64,7 +67,8 @@ class ProcessorProgrammer (QWidget):
         layout.addWidget(self.file_path, 1, 1, 1, 2)
         layout.addWidget(select_proc_image_button, 1, 3, 1, 1)
         layout.addWidget(processor_program_button, 2, 0, 1, 4)
-        self.set_background_color(150, 150, 200)
+        #self.set_background_color(150, 150, 200)
+        self.set_background_color_tuple(UNCONNECTED_COLOR)
 
         #Add widgets to layout
         self.setLayout(layout)
@@ -75,7 +79,7 @@ class ProcessorProgrammer (QWidget):
         """
         #change the background to light greend to indicate connected
         #Display 'connected on the status'
-        self.set_background_color(0, 200, 100)
+        self.set_background_color_tuple(CONNECTED_COLOR)
 
     def disconnected(self):
         """
@@ -86,7 +90,7 @@ class ProcessorProgrammer (QWidget):
         """
         #Change the bakground to grey to indicate disconnected
         #Display 'disconnected on the status'
-        self.set_background_color(150, 150, 200)
+        self.set_background_color_tuple(UNCONNECTED_COLOR)
 
     def processor_file_chooser(self):
         """
@@ -116,7 +120,9 @@ class ProcessorProgrammer (QWidget):
         except PrometheusUSBError, err:
             self.prometheus.status(3, "Failed to Program USB: %s" % str(err))
 
-
+    def set_background_color_tuple(self, color):
+        self.set_background_color(color[0], color[1], color[2])
+ 
     def set_background_color(self, r, g, b):
         self.setAutoFillBackground(True)
         color = QColor(r, g, b)
