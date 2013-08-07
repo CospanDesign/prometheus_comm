@@ -24,6 +24,7 @@
 #SOFTWARE.
 
 import sys
+import signal
 import argparse
 
 from array import array as Array
@@ -95,7 +96,6 @@ blue = '\033[94m'
 purple = '\033[95m'
 cyan = '\033[96m'
 
-
 def cl_status(level = 2, text = ""):
     if not text.endswith("\n"):
         text = text + "\n"
@@ -114,6 +114,9 @@ def cl_status(level = 2, text = ""):
     else:
         utext = "Unknown Level (%d) Text: %s" % (level, text)
         print utext
+
+def user1_event(signal_number, frame):
+    print "Hello"
 
 class Prometheus(object):
     """
@@ -261,6 +264,7 @@ class Prometheus(object):
         """
         Gracefully shutdown the server
         """
+        self.usb_server.shutdown()
         self.status(2, "Shutdown Server")
         self.server.shutdown()
 
@@ -328,6 +332,7 @@ class Prometheus(object):
 
 
     def usb_device_status_cb(self, status):
+        print "USB Main Callback"
         self.status(0, "USB Device CB")
         if status == USB_STATUS.FX3_CONNECTED:
             self.usb_status = USB_DEVICE_CONNECTED
@@ -412,6 +417,8 @@ if __name__ == "__main__":
         cl_status ("\tIf none is available then starts a server, then connect to it")
         sys.exit(0)
 
+
+    signal.signal(signal.SIGUSR1, user1_event)
 
     #Visual Server Mode
     cl_status(0, "Starting Main GUI")

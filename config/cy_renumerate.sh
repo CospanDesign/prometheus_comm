@@ -17,4 +17,9 @@ if [ "$pid" ]; then
     kill -s SIGUSR1 $pid
 fi
 
+pid=`pidof -x idle_proc.py`
+if [ "$pid" ]; then
+    kill -s SIGUSR1 $pid
+fi
+
 
