@@ -19,9 +19,21 @@
 #OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 #SOFTWARE.
 
+import sys
+import os
 
 from PyQt4.QtCore import *
 from PyQt4.QtGui import *
+
+from array import array as Array
+
+sys.path.append(os.path.join(os.path.dirname(__file__),
+                os.pardir))
+
+from usb_server.prometheus_usb import PrometheusUSBError
+
+class ProcessorProgrammerError(Exception):
+    pass
 
 class ProcessorProgrammer (QWidget):
     """
@@ -89,6 +101,21 @@ class ProcessorProgrammer (QWidget):
 
     def processor_program_pressed(self):
         print "Processor Programmed Pressed"
+        self.prometheus.status(0, "User Programming from File")
+        file_path = self.file_path.text()
+        buf = None
+        try:
+            f = open(file_path, "r")
+            buf = Array('B', f.read())
+            f.close()
+        except IOError, err:
+            raise ProcessorProgrammerError("Error Reading File: %s" % str(err))
+
+        try:
+            self.prometheus.program_device(buf)
+        except PrometheusUSBError, err:
+            self.prometheus.status(3, "Failed to Program USB: %s" % str(err))
+
 
     def set_background_color(self, r, g, b):
         self.setAutoFillBackground(True)

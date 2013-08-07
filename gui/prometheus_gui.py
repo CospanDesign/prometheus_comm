@@ -62,14 +62,21 @@ class PrometheusGui (QWidget):
 
         self.setLayout(layout)
         self.status.set_level(0)
-        #self.status.insert_text("HI")
-        #self.status.verbose("HI")
-        #self.status.debug("HI")
-        #self.status.info("HI")
-        #self.status.warning("HI")
-        #self.status.error("HI")
-        #self.status.critical("HI")
+#        self.status.insert_text("HI")
+#        self.status.verbose("HI")
+#        self.status.debug("HI")
+#        self.status.info("HI")
+#        self.status.warning("HI")
+#        self.status.error("HI")
+#        self.status.critical("HI")
 
+    def usb_connected(self):
+        if self.programmer:
+            self.programmer.usb_connected()
+
+    def usb_disconnected(self):
+        if self.programmer:
+            self.programmer.usb_disconnected()
 
     def closeEvent(self, event):
         self.prometheus.shutdown_server()

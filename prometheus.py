@@ -149,7 +149,6 @@ class Prometheus(object):
         self.status(2, "Control Server: %s" % self.control_server_status) 
         self.status(2, "Data Server: %s" % self.data_server_status) 
         self.status(2, "USB Controller: %s" % self.usb_status) 
-
         return self.gui
 
     def closeEvent(self, event):
@@ -214,7 +213,7 @@ class Prometheus(object):
             Nothing
         """
         try:
-            self.statu(2, "Programming Device over USB")
+            self.status(2, "Programming Device over USB")
             self.usb_server.download_program(buf)
         except PrometheusUSBError, err:
             self.error = str(err)
@@ -332,26 +331,37 @@ class Prometheus(object):
 
 
     def usb_device_status_cb(self, status):
-        print "USB Main Callback"
-        self.status(0, "USB Device CB")
+        #print "USB Main Callback"
+        #self.status(0, "USB Device CB: %d" % status)
         if status == USB_STATUS.FX3_CONNECTED:
-            self.usb_status = USB_DEVICE_CONNECTED
-            self.status(2, self.usb_status)
-        if status == USB_STATUS.FX3_NOT_CONNECTED:
-            self.usb_status = USB_DEVICE_NOT_CONNECTED
-            self.status(2, self.usb_status)
-        if status == USB_STATUS.FX3_PROGRAMMING_FAILED:
-            self.usb_status = USB_FAILED
-            self.status(4, self.usb_status)
-        if status == USB_STATUS.FX3_PROGRAMMING_PASSED:
-            self.usb_status = USB_PROGRAMMED
-            self.status(2, self.usb_status)
-        if status == USB_STATUS.BUSY:
-            self.usb_status = USB_BUSY
-            self.status(3, self.usb_status)
-        if status == USB_STATUS.USER_APPLICATION:
-            self.usb_status = USB_USER_APPLICATION
-            self.status(2, self.usb_status)
+            if self.usb_status != USB_DEVICE_CONNECTED:
+                self.usb_status = USB_DEVICE_CONNECTED
+                self.status(2, self.usb_status)
+                if self.gui:
+                    self.gui.usb_connected()
+        elif status == USB_STATUS.FX3_NOT_CONNECTED:
+            if self.usb_status != USB_DEVICE_NOT_CONNECTED:
+                self.usb_status = USB_DEVICE_NOT_CONNECTED
+                self.status(2, self.usb_status)
+                if self.gui:
+                    self.gui.usb_disconnected()
+        elif status == USB_STATUS.FX3_PROGRAMMING_FAILED:
+            if self.usb_status != USB_FAILED:
+                self.usb_status = USB_FAILED
+                self.status(4, self.usb_status)
+        elif status == USB_STATUS.FX3_PROGRAMMING_PASSED:
+            if self.usb_status != USB_PROGRAMMED:
+                self.usb_status = USB_PROGRAMMED
+                self.status(2, self.usb_status)
+        elif status == USB_STATUS.BUSY:
+            if self.usb_status != USB_BUSY:
+                self.usb_status = USB_BUSY
+                self.status(3, self.usb_status)
+        elif status == USB_STATUS.USER_APPLICATION:
+            if self.usb_status != USB_USER_APPLICATION:
+                self.usb_status = USB_USER_APPLICATION
+                self.status(2, self.usb_status)
+        #print "USB Main Callback Finished"
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(

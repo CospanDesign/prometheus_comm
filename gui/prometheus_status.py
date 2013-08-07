@@ -38,7 +38,10 @@ class PrometheusStatus (QWidget):
         layout.addWidget(self.output)
         self.setLayout(layout)
         self.text_cursor = self.output.textCursor()
+
         self.plain_format = QTextCharFormat()
+        self.plain_format.setForeground(Qt.black)
+        self.plain_format.setBackground(Qt.white)
         
         #Set Format
         self.verbose_format = QTextCharFormat()

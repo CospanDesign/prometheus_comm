@@ -30,6 +30,7 @@ import signal
 import socket
 import threading
 import select
+import re
 from subprocess import *
 
 import usb.core
@@ -48,6 +49,8 @@ from defines import FX3_PID
 from fx3_controller import FX3ControllerError
 from fx3_controller import FX3Controller
 
+SLEEP_COUNT = 2
+
 def enum(*sequential, **named):
   enums = dict(zip(sequential, range(len(sequential))), **named)
   return type('Enum', (), enums)
@@ -59,8 +62,6 @@ USB_STATUS = enum ('FX3_CONNECTED',
                    'BUSY',
                    'USER_APPLICATION')
 
-
-
 class ListenThread(threading.Thread):
 
     def __init__(self, file_path, server):
@@ -70,19 +71,27 @@ class ListenThread(threading.Thread):
 
     def run(self):
         file_path = '/var/log/syslog'
-        p = Popen(['tail', '-f', file_path], stdout=PIPE)
+        self.p = Popen(['tail', '-f', file_path], stdout=PIPE)
+        self.p.stdout.flush()
+        start = time.time() - 100
 
         self.ready = True
         while self.ready:
-            data = p.stdout.readline()
-            if "usb" in data:
+            data = self.p.stdout.readline()
+            end = time.time()
+            if end - start < SLEEP_COUNT:
+                continue
+            if re.search("usb", data):
+                time.sleep(.2)
+                start = time.time()
                 try:
-                    self.server.connect_to_cypress_fx3()
+                    self.server.update_usb()
                 except PrometheusUSBError, err:
                     pass
 
-
     def kill(self):
+        if self.p is not None:
+            self.p.kill()
         self.ready = False
 
 class PrometheusUSBError(Exception):
@@ -100,7 +109,7 @@ class PrometheusUSB(QObject):
         self.usb_device_status_cb = usb_device_status_cb
         self.status = USB_STATUS.FX3_NOT_CONNECTED
         try:
-            self.connect_to_cypress_fx3()
+            self.update_usb()
         except PrometheusUSBError, err:
             pass
 
@@ -126,32 +135,52 @@ class PrometheusUSB(QObject):
             return None
         #Activate the device (to the control configuratio)
         if dev is None:
-            self._set_status(USB_STATUS.FX3_NOT_CONNECTED)
+            #self._set_status(USB_STATUS.FX3_NOT_CONNECTED)
             return
-        dev.set_configuration()
-        self._set_status(USB_STATUS.FX3_CONNECTED)
+        #dev.set_configuration()
+        #self._set_status(USB_STATUS.FX3_CONNECTED)
         return dev
 
-    def connect_to_cypress_fx3(self):
-        print "Connect to FX3"
-        self.cypress_fx3_dev = None
-        self.cypress_fx3_dev = self.get_usb_device(CYPRESS_VID, FX3_PID)
+    def update_usb(self):
+        #print "Update USB"
+        #Check if my current handle to the FX3 is None
         if self.cypress_fx3_dev is None:
-            self._set_status(USB_STATUS.FX3_NOT_CONNECTED)
-            raise PrometheusUSBError("Cypress FX3 Not Found")
+            #if so see if the there is a FX3 device attached to the USB port
+            self.cypress_fx3_dev = self.get_usb_device(CYPRESS_VID, FX3_PID)
+            if self.cypress_fx3_dev is None:
+                #print "\tNot Connected"
+                self._set_status(USB_STATUS.FX3_NOT_CONNECTED)
+                self.fx3 = None
+                raise PrometheusUSBError("Cypress FX3 Not Found")
+            else:
+                #print "\tConnected"
+                #print "Found: %X:%X" % (self.cypress_fx3_dev.idVendor, self.cypress_fx3_dev.idProduct)
+                #self.cypress_fx3_dev.set_configuration()
+                self.fx3 = FX3Controller(self.cypress_fx3_dev)
+                self._set_status(USB_STATUS.FX3_CONNECTED)
+        else:
+            #Check if the fx3 chip was disconnected
+            devices = self.list_usb_devices()
+            for device in devices:
+                #print "Checking: VID:PID %X:%X" % (device.idVendor, device.idProduct)
+                if device.idVendor == CYPRESS_VID and device.idProduct == FX3_PID:
+                    return
 
-        self.cypress_fx3_dev.set_configuration()
-        self.fx3 = FX3Controller(self.cypress_fx3_dev)
-        self._set_status(USB_STATUS.FX3_CONNECTED)
+            self.cypress_fx3_dev = None
+            self._set_status(USB_STATUS.FX3_NOT_CONNECTED)
+
 
     def is_connected(self):
-        if self.fx3 is None:
+        if self.cypress_fx3_dev is None:
+            #print "Not Connected"
             return False
+        #print "Connected"
         return True
 
     def download_program(self, buf):
         if self.cypress_fx3_dev is not None:
             try:
+                self.fx3 = FX3Controller(self.cypress_fx3_dev)
                 self._set_status(USB_STATUS.BUSY)
                 self.fx3.download(buf)
                 self._set_status(USB_STATUS.FX3_PROGRAMMING_PASSED)
@@ -175,7 +204,10 @@ class PrometheusUSB(QObject):
         return self.status
 
     def shutdown(self):
-        pass
+        if self.cypress_fx3_dev is not None:
+            self.cypress_fx3_dev.reset()
+            self.cypress_fx3_dev = None
+        self.listen_thread.kill()
 
 if __name__ == "__main__":
     print "Signal Test!"

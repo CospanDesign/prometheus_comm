@@ -39,6 +39,8 @@ class PrometheusProgrammer (QWidget):
         layout.addWidget(self.processor_programmer)
 
         self.setLayout(layout)
+        if self.prometheus.usb_server.is_connected():
+            self.usb_connected()
 
     def usb_connected(self):
         """
@@ -46,6 +48,7 @@ class PrometheusProgrammer (QWidget):
         """
         #change the background to light greend to indicate connected
         #Display 'connected on the status'
+        self.processor_programmer.connected()
         pass
 
     def usb_disconnected(self):
@@ -57,6 +60,7 @@ class PrometheusProgrammer (QWidget):
         """
         #Change the bakground to grey to indicate disconnected
         #Display 'disconnected on the status'
+        self.processor_programmer.disconnected()
         pass
 
     def fpga_available(self):
@@ -70,3 +74,4 @@ class PrometheusProgrammer (QWidget):
         Called when an FPGA is not available to be programmed
         """
         pass
+
