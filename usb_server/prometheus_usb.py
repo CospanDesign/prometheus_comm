@@ -30,6 +30,7 @@ import signal
 import socket
 import threading
 import select
+from subprocess import *
 
 import usb.core
 import usb.util
@@ -62,32 +63,27 @@ USB_STATUS = enum ('FX3_CONNECTED',
 
 class ListenThread(threading.Thread):
 
-    def __init__(self, sock, server):
+    def __init__(self, file_path, server):
         super(ListenThread, self).__init__()
-        self.sock = sock
+        self.file_path = file_path
         self.server = server
 
     def run(self):
-        ready = True
-        try:
-            while ready:
-                input_ready, output_list, except_list = select.select([self.sock], [], [])
-                for s in input_ready:
-                    print "Received an interrupt"
-                    data = s.recv(512)
-                    try:
-                        self.server.connect_to_cypress_fx3()
-                    except PrometheusUSBError, err:
-                        print "Not Connected"
-                        pass
-                    if not data:
-                        ready = False
-                        return
-                    continue
+        file_path = '/var/log/syslog'
+        p = Popen(['tail', '-f', file_path], stdout=PIPE)
 
-        except socket.error, err:
-            print "Socket Error: %s" % str(err)
-            ready = False
+        self.ready = True
+        while self.ready:
+            data = p.stdout.readline()
+            if "usb" in data:
+                try:
+                    self.server.connect_to_cypress_fx3()
+                except PrometheusUSBError, err:
+                    pass
+
+
+    def kill(self):
+        self.ready = False
 
 class PrometheusUSBError(Exception):
     pass
@@ -103,45 +99,14 @@ class PrometheusUSB(QObject):
         self.prometheus_dev = None
         self.usb_device_status_cb = usb_device_status_cb
         self.status = USB_STATUS.FX3_NOT_CONNECTED
-
-        self.proc = QProcess()
-        self.connect(self.proc, SIGNAL("finished(int, QProcess::ExitStatus)"),
-            self.proc_finished)
-        self.connect(self.proc, SIGNAL("readyReadStandardOutput()"),
-            self.proc_read_stdio)
-        self.connect(self.proc, SIGNAL("readyReadStandardError()"),
-            self.proc_read_error)
-        self.connect(self.proc, SIGNAL("error(QProcess::ProcessError)"),
-            self.proc_error)
-        self.connect(self.proc, SIGNAL("started()"),
-            self.proc_started)
-
-        self.proc.setWorkingDirectory(os.path.dirname(__file__))
-        system_environment = self.proc.systemEnvironment()
-        self.proc.setEnvironment(system_environment)
-        #self.proc.setProcessEnvironment(system_environment)
-        self.proc.start("python", ["idle_proc.py"])
-
-#        self.rsock = None
-#        self.wsock = None
-#        self.rsock, self.wsock = socket.socketpair(socket.AF_UNIX, socket.SOCK_STREAM)
-#        #self.rsock.setblocking(False)
-#        #self.rsock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-#        #self.wsock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-#
-#        self.notifier = QSocketNotifier(self.rsock.fileno(), QSocketNotifier.Read)
-#        self.connect(self.notifier, SIGNAL("activated()"), self.notify)
-#        #self.lthread = ListenThread(self.rsock, self)
-#        #self.lthread.start()
-
-        #Set up events
-#        signal.signal(signal.SIGUSR1, self.user1_event)
         try:
             self.connect_to_cypress_fx3()
         except PrometheusUSBError, err:
             pass
 
         self.fx3 = None
+        self.listen_thread = ListenThread("/var/log/syslog", self)
+        self.listen_thread.start()
 
 
     def list_usb_devices(self):
@@ -184,21 +149,6 @@ class PrometheusUSB(QObject):
             return False
         return True
 
-    def user1_event(self, signal_number, frame):
-        print "User 1 Event"
-        self.wsock.send("\0")
-        print "frame dir: %s" % str(dir(frame.f_globals))
-
-#        try:
-#            usb_devices = self.list_usb_devices()
-#            self._set_status(USB_STATUS.FX3_NOT_CONNECTED)
-#            #print "USB Devices: %s" % str(usb_devices)
-#            self.connect_to_cypress_fx3()
-#            #print "Connected to Cypress FX3"
-#            self._set_status(USB_STATUS.FX3_CONNECTED)
-#        except PrometheusUSBError, err:
-#            self._set_status(USB_STATUS.FX3_NOT_CONNECTED)
-
     def download_program(self, buf):
         if self.cypress_fx3_dev is not None:
             try:
@@ -225,34 +175,7 @@ class PrometheusUSB(QObject):
         return self.status
 
     def shutdown(self):
-        #self.wsock.shutdown(socket.SHUT_RDWR)
-        #self.wsock.close()
-        #self.rsock.shutdown(socket.SHUT_RDWR)
-        #self.rsock.close()
-        #self.lthread.join()
-        if self.proc is not None:
-            self.proc.kill()
         pass
-
-    def proc_read_stdio(self):
-        text = self.proc.readAllStandardOutput().data().decode('utf8')
-        print "Got something from sub proc"
-        self.connect_to_cypress_fx3()
-
-    def proc_read_error(self):
-        text = self.proc.readAllStandardError().data().decode('utf8')
-        print "proc read error: %s" % text
-
-    def proc_error(self, error):
-
-        print "proc error: %s" % str(error)
-
-    def proc_started(self):
-        print "proc started"
-
-    def proc_finished(self, exit_code, exit_status):
-        print "proc finished"
-
 
 if __name__ == "__main__":
     print "Signal Test!"
