@@ -23,6 +23,7 @@
 #OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 #SOFTWARE.
 
+import os
 import sys
 import signal
 import argparse
@@ -32,7 +33,7 @@ from array import array as Array
 from PyQt4.QtCore import *
 from PyQt4.QtGui import *
 
-from gui.prometheus_gui import PrometheusGui 
+from gui.prometheus_gui import PrometheusGui
 
 from server.prometheus_server import PrometheusServerError
 from server.prometheus_server import PrometheusServer
@@ -41,6 +42,9 @@ from server.prometheus_client import is_server_running
 from server.prometheus_client import PrometheusClientError
 from server.prometheus_client import PrometheusClient
 from server.prometheus_client import get_server_status
+from server.prometheus_client import get_data_port
+from server.prometheus_client import is_data_server_ready
+from server.prometheus_client import is_usb_device_attached
 
 from usb_server.prometheus_usb import PrometheusUSBError
 from usb_server.prometheus_usb import PrometheusUSB
@@ -97,8 +101,9 @@ purple = '\033[95m'
 cyan = '\033[96m'
 
 def cl_status(level = 2, text = ""):
-    if not text.endswith("\n"):
-        text = text + "\n"
+    #if not text.endswith("\n"):
+    #    text = text + "\n"
+
     if level == 0:
         print "%sVerbose: %s%s" % (cyan, text, white)
     elif level == 1:
@@ -112,11 +117,7 @@ def cl_status(level = 2, text = ""):
     elif level == 5:
         print "%sCritical: %s%s" % (red, text, white)
     else:
-        utext = "Unknown Level (%d) Text: %s" % (level, text)
-        print utext
-
-def user1_event(signal_number, frame):
-    print "Hello"
+        print "Unknown Level (%d) Text: %s" % (level, text)
 
 class Prometheus(object):
     """
@@ -131,14 +132,14 @@ class Prometheus(object):
         self.usb_data = ""
         self.gui = None
 
-        self.server = PrometheusServer(self.data_server_status,
-                                       self.data_server_activity,
+        self.server = PrometheusServer(self,
+                                       self.data_server_status_cb,
+                                       self.data_server_activity_cb,
                                        self.controller_server_status,
                                        self.controller_server_activity)
 
         self.usb_server = PrometheusUSB(self.usb_device_status_cb)
         self.error = ""
-        self.program_buffer = Array('B', [])
 
     def init_gui(self):
         """
@@ -146,9 +147,9 @@ class Prometheus(object):
         """
         self.gui = PrometheusGui(self)
         self.status(2, "Initializing GUI")
-        self.status(2, "Control Server: %s" % self.control_server_status) 
-        self.status(2, "Data Server: %s" % self.data_server_status) 
-        self.status(2, "USB Controller: %s" % self.usb_status) 
+        self.status(2, "Control Server: %s" % self.control_server_status)
+        self.status(2, "Data Server: %s" % self.data_server_status)
+        self.status(2, "USB Controller: %s" % self.usb_status)
         return self.gui
 
     def closeEvent(self, event):
@@ -263,8 +264,8 @@ class Prometheus(object):
         """
         Gracefully shutdown the server
         """
-        self.usb_server.shutdown()
         self.status(2, "Shutdown Server")
+        self.usb_server.shutdown()
         self.server.shutdown()
 
     def controller_server_status(self, connected):
@@ -277,7 +278,6 @@ class Prometheus(object):
             self.control_server_status = SERVER_CONNECTED
             status = self.status_string()
             self.status(1, "Status server connected")
-            self.server.send_status(status)
             if self.gui:
                 self.gui.status_server_connected()
         else:
@@ -287,13 +287,16 @@ class Prometheus(object):
             if self.gui:
                 self.gui.status_server_disconnected()
 
-        self.status(2, control_server_status)
+        self.status(2, self.control_server_status)
 
     def status(self, level = 2, text = ""):
         if self.gui is None:
+            print "Set Status"
             cl_status(level, text)
             return
+        #print "Set GUI Status: %d, %s" % (level, text)
         self.gui.set_status(level, text)
+        #print "GUI Status Set"
 
     def status_string(self):
         """
@@ -313,33 +316,39 @@ class Prometheus(object):
         self.sever.send_status(self.status_string())
 
 
-    def data_server_status(self, connected):
+    def data_server_status_cb(self, connected):
         """
         This is called when a client either connects or disconnects
         """
-        if connected is not None:
-            #print "Server is connected"
-            self.status(1, "Client connected to data server")
+        print "Data Server Status"
+        if connected:
             self.data_server_status = SERVER_CONNECTED
+            self.status(3, "Client connected to data server")
+            print "Server is connected"
             if self.gui:
                 self.gui.data_server_connected()
+            print "Updated server connected"
         else:
-            #print "Server is not connected"
-            self.status(1, "Client disconnected to data server")
             self.data_server_status = SERVER_NOT_CONNECTED
+            self.status(3, "Client disconnected to data server")
+            print "Server is not connected"
             if self.gui:
                 self.gui.data_server_disconnected()
+            print "Updated server disconnected"
 
         self.status(2, self.data_server_status)
         #Now analyze the data that came in over the server
+        print "Done with data aserver callback"
 
-    def data_server_activity(self, data):
+    def data_server_activity_cb(self, data):
         """
         Called when new data is received on the server
         """
         self.data_server_string = SERVER_WAITING
-        print "New Data"
-        print "%s\n" % data
+        #print "New Data"
+        #print "%s\n" % data
+        buf = Array('B', data)
+        self.program_device(buf)
 
 
     def usb_device_status_cb(self, status):
@@ -385,7 +394,7 @@ if __name__ == "__main__":
         description=DESCRIPTION,
         epilog=EPILOG
     )
- 
+
     global debug
     debug = False
     #Make debug global to the all modules
@@ -423,28 +432,60 @@ if __name__ == "__main__":
         #    sys.exit(0)
 
         status = get_server_status()
-        cl_status ("Status\n%s" % status)
+        cl_status (0, "Status\n%s" % status)
         sys.exit(0)
 
 
     if args.daemon:
-        cl_status("Run the system as a deamon")
+        cl_status(2, "Run the system as a deamon")
         sys.exit(0)
 
     if args.program:
-        cl_status ("Run the system as a client\n")
-        cl_status ("\tAttempts to locate a pre-existing server")
-        cl_status ("\tIf none is available then starts a server, then connect to it")
+        cl_status (2, "Run the system as a client")
+        status = get_server_status()
+
+        cl_status (2, "\tAttempt to locate a pre-existing server")
+        cl_status (2, "\tIf none is available then starts a server, then connect to it")
         sys.exit(0)
 
     if args.program_processor:
-        cl_status ("Run the system as a client\n")
-        cl_status ("\tAttempts to locate a pre-existing server")
-        cl_status ("\tIf none is available then starts a server, then connect to it")
+        cl_status (2, "Run the system as a client")
+        status = get_server_status()
+        #print "status:"
+        #print status
+        port = 0
+        data_server_ready = False
+        usb_attached = False
+        try:
+            port = get_data_port(status)
+            data_server_ready = is_data_server_ready(status)
+            usb_attached = is_usb_device_attached(status)
+            cl_status(1, "Data Port: 0x%X" % port)
+            if data_server_ready:
+                cl_status(1, "Data Server ready")
+            else:
+                cl_status(1, "Data Server not ready")
+
+            if usb_attached:
+                cl_status(1, "USB Device is available")
+            else:
+                cl_status(1, "USB Device is not available")
+            file_path = args.program_processor[0]
+            #print "System vars: %s" % str(dir(sys))
+            #print "System path: %s" % sys.argv[0]
+            #print "File Path: %s" % file_path
+            f = open(file_path, "r")
+            buf = f.read()
+            pc = PrometheusClient()
+            pc.send_data(buf)
+
+             
+
+        except PrometheusClientError, err:
+            cl_status(4, str(err))
+        #cl_status (2, "\tAttempts to locate a pre-existing server")
+        #cl_status (2, "\tIf none is available then starts a server, then connect to it")
         sys.exit(0)
-
-
-    signal.signal(signal.SIGUSR1, user1_event)
 
     #Visual Server Mode
     cl_status(0, "Starting Main GUI")

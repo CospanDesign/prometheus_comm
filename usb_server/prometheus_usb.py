@@ -208,6 +208,7 @@ class PrometheusUSB(QObject):
             self.cypress_fx3_dev.reset()
             self.cypress_fx3_dev = None
         self.listen_thread.kill()
+        self.listen_thread.join()
 
 if __name__ == "__main__":
     print "Signal Test!"

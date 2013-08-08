@@ -75,28 +75,30 @@ class PrometheusClient(object):
         try:
             client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             #For the times where the socket was not closed cleanly
-            client.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            #client.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             client.connect((host, port))
 
         except socket.error, err:
             raise PrometheusClientError("Failed to connecto to server")
 
         #Check for greeting
-        self.client.settimeout(1)
-        greeting = self.client.recv(MAX_READ_SIZE)
-        if len(greeting > 0):
-            print "Received from host: %s" % greeting
+        client.settimeout(10)
+        #greeting = client.recv(MAX_READ_SIZE)
+        #if len(greeting > 0):
+        #    print "Received from host: %s" % greeting
 
         #Attempt to send the data
         try:
-            self.client.sendall(data)
+            client.sendall(data)
         except socket.error, err:
             raise PrometheusClientError("Failed to send data: %s" % str(err))
 
+        print "Finished Sending Data"
         #I need a way to get feedback from the device
 
         #Close the socket connection
-        self.client.close()
+        client.shutdown(socket.SHUT_RDWR)
+        client.close()
         
  
 def get_server_status(host = 'localhost', port = STATUS_PORT):
@@ -167,5 +169,57 @@ def is_server_running():
 
     return True
     
+def get_data_port(server_status = None):
+    """
+    if server is None then request
+    """
+    if server_status is None:
+        server_status = get_server_status()
+    
+    lines = server_status.splitlines()
+    for line in lines:
+        name = line.partition(":")[0]
+        #print "Name: %s" % name
+        value = line.partition(":")[2].strip()
+        value = value.partition("0x")[2]
+        if "Data Port" in name:
+            #print "Found Data Port"
+            return int(value, 16)
+
+    raise PrometheusClientError("Data Port not found int %s" % server_status)
+
+def is_data_server_ready(server_status = None):
+    if server_status is None:
+        server_status = get_server_status()
+
+    lines = server_status.splitlines()
+    for line in lines:
+        name = line.partition(":")[0]
+        #print "Name: %s" % name
+        value = line.partition(":")[2].strip()
+        if "Data Server" in name:
+            if value == "Connected":
+                return False
+            return True
+
+    raise PrometheusClientError("Data Port not found int %s" % server_status)
+
+def is_usb_device_attached(server_status = None):
+    if server_status is None:
+        server_status = get_server_status()
+
+    lines = server_status.splitlines()
+    for line in lines:
+        name = line.partition(":")[0]
+        #print "Name: %s" % name
+        value = line.partition(":")[2].strip().lower()
+        if "USB Status" in name:
+            print "USB value: %s" % value
+            if re.search("device.*connect", value):
+                return True
+            return False
+
+    raise PrometheusClientError("Data Port not found int %s" % server_status)
+
 
 

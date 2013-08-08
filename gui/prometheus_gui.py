@@ -90,7 +90,7 @@ class PrometheusGui (QWidget):
 
     def data_server_connected(self):
         if self.data_server:
-            self.data_server.conected()
+            self.data_server.connected()
 
     def data_server_disconnected(self):
         if self.data_server:
@@ -104,6 +104,7 @@ class PrometheusGui (QWidget):
         if level == 0:
             self.status.verbose(text)
         elif level == 1:
+            print "Set Debug"
             self.status.debug(text)
         elif level == 2:
             self.status.info(text)
