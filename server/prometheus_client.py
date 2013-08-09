@@ -145,6 +145,7 @@ def vendor_reset_device(host = 'localhost', port = STATUS_PORT, usb_id = "-1:-1"
     #Close the socket connection
     client.shutdown(socket.SHUT_RDWR)
     client.close()
+    time.sleep(4)
     return status     
 
 
