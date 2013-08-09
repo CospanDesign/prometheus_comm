@@ -45,8 +45,10 @@ from server.prometheus_client import get_server_status
 from server.prometheus_client import get_data_port
 from server.prometheus_client import is_data_server_ready
 from server.prometheus_client import is_usb_device_attached
+from server.prometheus_client import vendor_reset_device
 
 from usb_server.prometheus_usb import PrometheusUSBError
+from usb_server.prometheus_usb import PrometheusUSBWarning
 from usb_server.prometheus_usb import PrometheusUSB
 from usb_server.prometheus_usb import USB_STATUS
 
@@ -78,7 +80,11 @@ EPILOG = "\n"\
     "\n"\
     "prometheus.py --program <file>\n"\
     "\tProgram prometheus then exits, if a server is already running then\n"\
-    "\tconnect to it and program and then exit\n"
+    "\tconnect to it and program and then exit\n"\
+    "\n"\
+    "prometheus.py --vendor_reset\n"\
+    "\tPerform a vendor_reset on a possible user configuration\n"\
+    "\n"
 
 SERVER_NOT_CONNECTED     = "Not Connected"
 SERVER_CONNECTED         = "Connected"
@@ -274,7 +280,13 @@ class Prometheus(object):
         """
         if connected:
             self.status(2, "Connection on status socket, Check for USB Device")
-            self.usb_server.update_usb()
+            try:
+                self.status(0, "looking for a USB Device")
+                self.usb_server.update_usb()
+            except PrometheusUSBError, err:
+                self.status(4, str(err))
+                return
+
             if self.usb_server.is_connected():
                 self.status(2, "Found a USB Device")
             #print "program status is connected"
@@ -391,6 +403,19 @@ class Prometheus(object):
         #Write data to the device
         self.status(0, "Write Data to the device")
 
+    def vendor_reset(self, vid, pid):
+        #Send a Vendor Reset to put the device back into a known configuration
+        self.status(1, "Sending a vendor reset to: %04X:%04X" % (vid, pid))
+        try:
+            self.usb_server.vendor_reset(vid, pid)
+        except PrometheusUSBWarning, warning:
+            self.status(3, str(warning))
+            return False
+        except PrometheusUSBError, err:
+            self.status(4, str(err))
+            return False
+        return True
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
     formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -409,6 +434,10 @@ if __name__ == "__main__":
             help="Start Prometheus comm as a daemon")
     parser.add_argument("-s", "--status", action='store_true',
             help="Returns the status of both servers and usb")
+    parser.add_argument("-vr", "--vendor_reset", 
+            type=str,
+            nargs=1,
+            help="Perform a Vendor Reset on a specified VID:UID")
     parser.add_argument("-r", "--reset", action="store_true",
             help="Reset Prometheus")
     parser.add_argument("-pp", "--program_processor",
@@ -429,6 +458,12 @@ if __name__ == "__main__":
         cl_status(1, "Debug Enabled")
         debug = True
 
+    if args.vendor_reset:
+        cl_status (0, "Perform Vendor Reset on %s" % args.vendor_reset[0])
+        status = vendor_reset_device(usb_id=args.vendor_reset[0])
+        cl_status (0, "Status\n%s" % status)
+        sys.exit(0)
+
     if args.status:
         #if not is_server_running():
         #    print "Server Not Running"
@@ -437,7 +472,6 @@ if __name__ == "__main__":
         status = get_server_status()
         cl_status (0, "Status\n%s" % status)
         sys.exit(0)
-
 
     if args.daemon:
         cl_status(2, "Run the system as a deamon")

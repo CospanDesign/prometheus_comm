@@ -100,6 +100,54 @@ class PrometheusClient(object):
         client.shutdown(socket.SHUT_RDWR)
         client.close()
         
+
+def vendor_reset_device(host = 'localhost', port = STATUS_PORT, usb_id = "-1:-1"):
+    """
+    Opens up a connection to the status server and request status and send
+
+    Args:
+        host (string/IP): Address of the host
+            (default = 'localhost' or this computer)
+        port (integer): server port on the local host
+            (default = default.STATUS_PORT probably 0xC594)
+        usb_id (string): Vendor ID and Product ID in a string format
+
+    Return:
+        (String) Status
+
+    Raises:
+        Nothing
+    """
+    client = None
+    status = ""
+    try:
+        client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        #For the times where the socket was not closed cleanly
+        client.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        client.connect((host, port))
+
+    except socket.error, err:
+        if re.search("Errno.*111", str(err)):
+            return "No Server Running"
+
+        return "Not Connected to Server: %s" % str(err)
+
+    #Check for greeting
+    client.settimeout(1)
+    client.sendall("vr%s" % usb_id)
+
+    try:
+        status = client.recv(MAX_READ_SIZE)
+
+    except socket.error as err:
+        print "Error reading data"
+
+    #Close the socket connection
+    client.shutdown(socket.SHUT_RDWR)
+    client.close()
+    return status     
+
+
  
 def get_server_status(host = 'localhost', port = STATUS_PORT):
     """
@@ -132,6 +180,7 @@ def get_server_status(host = 'localhost', port = STATUS_PORT):
 
     #Check for greeting
     client.settimeout(1)
+    client.sendall("?")
     try:
         status = client.recv(MAX_READ_SIZE)
 

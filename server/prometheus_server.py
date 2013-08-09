@@ -28,6 +28,7 @@ import threading
 import Queue
 import select
 import signal
+import time
 
 
 from PyQt4.QtCore import *
@@ -97,6 +98,7 @@ class PrometheusServer(QObject):
         #Start the status server
         self.status_sock = None
         self.status_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.status_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.status_sock.bind(('localhost', STATUS_PORT))
         self.status_sock.listen(1)
         self.status_socket_thread = SocketThread(self.status_sock,
@@ -105,6 +107,7 @@ class PrometheusServer(QObject):
 
         #Start the data server
         self.data_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.data_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.data_sock.bind(('localhost', DATA_PORT))
         self.data_sock.listen(1)
         self.data_socket_thread = SocketThread(self.data_sock,
@@ -154,6 +157,43 @@ class PrometheusServer(QObject):
     def server_status_connection_cb(self):
         print "Status Server Read!"
         connection, addr = self.status_sock.accept()
+        data = ""
+        vid = 0
+        pid = 0
+        while True:
+            buf = connection.recv(1024)
+            if len(buf) == 0:
+                #We're done
+                break
+            else:
+                #Append the data on the the buffer
+                data += buf
+                print "Data: %s" % data
+
+                if data[0] == '?':
+                    print "Got a request"
+                    break
+                if "vr" in data:
+                    print "Vendor Reset"
+                    usb_string = data[2:]
+                    try:
+                        vid = int(usb_string.partition(":")[0], 16)
+                        pid = int(usb_string.partition(":")[2], 16)
+                    except ValueError, err:
+                        connection.sendall("Error in the string %s, %s" % (usb_string, str(err)))
+                        return
+
+
+                    result = self.prometheus.vendor_reset(vid, pid)
+                    if result:
+                        buf = "Successfully Reset: %04X:%04X\n" % (vid, pid)
+                    else:
+                        buf = "Failed to Reset: %04X:%04X\n" % (vid, pid)
+
+                    connection.sendall(buf)
+                    return
+
+
         self.status_connection = connection
         self.status_connection_cb(True)
         buf = self.greeting_message

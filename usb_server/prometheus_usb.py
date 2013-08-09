@@ -97,6 +97,9 @@ class ListenThread(threading.Thread):
 class PrometheusUSBError(Exception):
     pass
 
+class PrometheusUSBWarning(Exception):
+    pass
+
 class PrometheusUSB(QObject):
     """
     Class to handle communication between the processor and host computer
@@ -131,14 +134,10 @@ class PrometheusUSB(QObject):
         try:
             dev = usb.core.find(idVendor=vid, idProduct=pid)
         except:
-            print "USB Error: %s" % str(err)
-            return None
+            raise PrometheusUSBError("Failed to get USB Device: %s" % str(err))
         #Activate the device (to the control configuratio)
         if dev is None:
-            #self._set_status(USB_STATUS.FX3_NOT_CONNECTED)
-            return
-        #dev.set_configuration()
-        #self._set_status(USB_STATUS.FX3_CONNECTED)
+            raise PrometheusUSBError("Failed to find USB Device with VID: %04X:%04X" % (vid, pid))
         return dev
 
     def update_usb(self):
@@ -147,6 +146,7 @@ class PrometheusUSB(QObject):
         if self.cypress_fx3_dev is None:
             #if so see if the there is a FX3 device attached to the USB port
             self.cypress_fx3_dev = self.get_usb_device(CYPRESS_VID, FX3_PID)
+
             if self.cypress_fx3_dev is None:
                 #print "\tNot Connected"
                 self._set_status(USB_STATUS.FX3_NOT_CONNECTED)
@@ -190,10 +190,24 @@ class PrometheusUSB(QObject):
         else:
             raise PrometheusUSBError("FX3 Not Connected")
         
-    def reset(self):
-        if dev is None:
-            raise PrometheusUSBError("Error: There is no USB Device connected to reset")
-        self.dev.reset()
+    def vendor_reset(self, vid, pid):
+        if self.cypress_fx3_dev is not None:
+            raise PrometheusUSBWarning("Device is already connected to the default image")
+        #Attemp to attach to the device with the given VID PID
+        dev = self.get_usb_device(vid, pid)
+        try:
+            dev.ctrl_transfer(
+                bmRequestType = 0x40,   #VRequest, To the devce, Endpoint
+                bRequest      = 0xE0,   #Reset
+                wValue        = 0x00,   
+                wIndex        = 0x00,
+                timeout       = 1000)    #Timeout                    = 1 second
+
+        except usb.core.USBError, err:
+            print "USB Error: %s" % str(err)
+            return False
+
+        return True
 
     def _set_status(self, status):
         self.status = status
