@@ -98,13 +98,17 @@ class FX3Controller(object):
 
         time.sleep(1)
         #Set the program entry point
-        write_len = self.dev.ctrl_transfer(
-                bmRequestType = 0x40,                 #VRequest, To the devce, Endpoint
-                bRequest = 0xA0,                      #Vendor Specific
-                wValue = program_entry & 0x0000FFFF,  #Entry point of the program
-                wIndex = program_entry >> 16,
-                #data_or_wLength = 0,                  #No Data
-                timeout = 1000)                       #Timeout = 1 second
+        print "Sending Reset"
+        try:
+            write_len = self.dev.ctrl_transfer(
+                    bmRequestType = 0x40,                 #VRequest, To the devce, Endpoint
+                    bRequest = 0xA0,                      #Vendor Specific
+                    wValue = program_entry & 0x0000FFFF,  #Entry point of the program
+                    wIndex = program_entry >> 16,
+                    #data_or_wLength = 0,                  #No Data
+                    timeout = 1000)                       #Timeout = 1 second
+        except usb.core.USBError, err:
+            pass
 
     def write_program_data(self, address, data):
         print "Write data to the device"
@@ -114,6 +118,7 @@ class FX3Controller(object):
         index = 0
         #Size is maximum of 4096
         finished = False
+        write_len = 0
         while True:
             if len(data[index:]) > 4096:
                 buf = data[index: index+ 4096]
@@ -121,13 +126,16 @@ class FX3Controller(object):
                 buf = data[index:]
 
             print "Writing: %d bytes to address: 0x%X" % (len(buf), address)
-            write_len = self.dev.ctrl_transfer(
-                bmRequestType = 0x40,            #VRequest, to device, endpoint
-                bRequest = 0xA0,                 #Vendor Spcific write command
-                wValue = 0x0000FFFF & address,   #Addr Low 16-bit value
-                wIndex = address >> 16,          #Addr High 16-bit value
-                data_or_wLength = buf.tostring(),              #Data
-                timeout = 1000)                                #Timeout 1 second
+            try:
+                write_len = self.dev.ctrl_transfer(
+                    bmRequestType = 0x40,            #VRequest, to device, endpoint
+                    bRequest = 0xA0,                 #Vendor Spcific write command
+                    wValue = 0x0000FFFF & address,   #Addr Low 16-bit value
+                    wIndex = address >> 16,          #Addr High 16-bit value
+                    data_or_wLength = buf.tostring(),              #Data
+                    timeout = 1000)                                #Timeout 1 second
+            except usb.core.USBError, err:
+                pass
 
 
 

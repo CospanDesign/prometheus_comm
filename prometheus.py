@@ -273,11 +273,14 @@ class Prometheus(object):
         Called with the status client connects or disconnects
         """
         if connected:
+            self.status(2, "Connection on status socket, Check for USB Device")
+            self.usb_server.update_usb()
+            if self.usb_server.is_connected():
+                self.status(2, "Found a USB Device")
             #print "program status is connected"
             #Send status update
             self.control_server_status = SERVER_CONNECTED
             status = self.status_string()
-            self.status(1, "Status server connected")
             if self.gui:
                 self.gui.status_server_connected()
         else:

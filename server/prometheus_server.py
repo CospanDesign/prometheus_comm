@@ -144,7 +144,6 @@ class PrometheusServer(QObject):
         self.data_activity_cb(data)
         connection.shutdown(socket.SHUT_RD)
         connection.close()
-        self.data_activity_cb(data)
         self.data_status_cb(False)
         #self.data_socket_thread = SocketThread(self.data_sock,
         #                                       self.server_data_connection_cb)
