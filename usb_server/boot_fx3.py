@@ -21,20 +21,33 @@
 #OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 #SOFTWARE.
 
+import sys
+import os
 import time
 from array import array as Array
 import usb.core
 import usb.util
 
+from usb_device import USBDeviceError
+from usb_device import USBDevice
 
 
-class FX3ControllerError(Exception):
+sys.path.append(os.path.join(os.path.dirname(__file__),
+                os.pardir))
+
+from defines import CYPRESS_VID
+from defines import FX3_PID
+
+
+class BootFX3Error(Exception):
     pass
 
-class FX3Controller(object):
-    def __init__(self, dev):
-        super(FX3Controller, self).__init__()
-        self.dev = dev
+class BootFX3(USBDevice):
+    def __init__(self):
+        super(BootFX3, self).__init__()
+        self.dev = None
+        self.vid = CYPRESS_VID
+        self.pid = FX3_PID
 
     def download(self, buf):
         """
@@ -48,7 +61,7 @@ class FX3Controller(object):
             Nothing
 
         Raises:
-            FX3ControllerError with a description of the error
+            BootFX3Error with a description of the error
         """
         pos = 0
         cyp_id = "%c%c" % (buf[0], buf[1])
@@ -61,13 +74,13 @@ class FX3Controller(object):
 
         print "cyp id: %s" % cyp_id
         if cyp_id != "CY":
-            raise FX3ControllerError("Image file does not start with Cypress ID: %s" % cpy_id)
+            raise BootFX3Error("Image file does not start with Cypress ID: %s" % cpy_id)
         print "Image Control: 0x%X" % image_cntrl
         if image_cntrl & 0x01 != 0:
-            raise FX3ControllerError("Image Control Byte bit 0 != 1, thie file does not contain executable code")
+            raise BootFX3Error("Image Control Byte bit 0 != 1, thie file does not contain executable code")
         print "Image Type: 0x%X" % image_type
         if image_type != 0xB0:
-            raise FX3ControllerError("Not a normal FW Binary with Checksum")
+            raise BootFX3Error("Not a normal FW Binary with Checksum")
 
         while True:
             size = (buf[pos + 3] << 24) + (buf[pos + 2] << 16) + (buf[pos + 1] << 8) + buf[pos]
@@ -94,7 +107,7 @@ class FX3Controller(object):
         #print "Checksum from file: 0x%X" % read_checksum
         #print "Checksum from calculation: 0x%X" % checksum
         if read_checksum != checksum:
-            raise FX3ControllerError("Checksum from file != Checksum from Data: 0x%X != 0x%X" % (read_checksum, checksum))
+            raise BootFX3Error("Checksum from file != Checksum from Data: 0x%X != 0x%X" % (read_checksum, checksum))
 
         time.sleep(1)
         #Set the program entry point
@@ -141,7 +154,7 @@ class FX3Controller(object):
 
             #Check if there was an error in the transfer
             if write_len != len(buf):
-                raise FX3ControllerError("Write Size != Length of buffer")
+                raise BootFX3Error("Write Size != Length of buffer")
 
             #Update the index
             index += write_len
@@ -154,5 +167,6 @@ class FX3Controller(object):
                 break
 
 
-
-
+    def reset_to_boot(self):
+        print "Do not reset the board when it is already in boot mode"
+        pass

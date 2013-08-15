@@ -104,15 +104,16 @@ class PrometheusGui (QWidget):
         if level == 0:
             self.status.verbose(text)
         elif level == 1:
-            print "Set Debug"
             self.status.debug(text)
         elif level == 2:
             self.status.info(text)
         elif level == 3:
-            self.status.warning(text)
+            self.status.important(text)
         elif level == 4:
-            self.status.error(text)
+            self.status.warning(text)
         elif level == 5:
+            self.status.error(text)
+        elif level == 6:
             self.status.critical(text)
         else:
             utext = "Unknown Level (%d) Text: %s" % (level, text)

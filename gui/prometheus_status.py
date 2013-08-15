@@ -56,6 +56,10 @@ class PrometheusStatus (QWidget):
         self.info_format.setForeground(Qt.black)
         self.info_format.setBackground(Qt.white)
 
+        self.important_format = QTextCharFormat()
+        self.important_format.setForeground(Qt.blue)
+        self.important_format.setBackground(Qt.black)
+
         self.warning_format = QTextCharFormat()
         self.warning_format.setForeground(Qt.yellow)
         self.warning_format.setBackground(Qt.black)
@@ -103,14 +107,19 @@ class PrometheusStatus (QWidget):
         if self.level <= 2:
             self.insert_text(text, self.info_format)
 
+    def important(self, text):
+        text = "Important: %s" % text
+        if self.level <= 3:
+            self.insert_text(text, self.important_format)
+
     def warning(self, text):
         text = "Warning: %s" % text
-        if self.level <= 3:
+        if self.level <= 4:
             self.insert_text(text, self.warning_format)
 
     def error(self, text):
         text = "Error: %s" % text
-        if self.level <= 4:
+        if self.level <= 5:
             self.insert_text(text, self.error_format)
 
     def critical(self, text):

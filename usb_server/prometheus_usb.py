@@ -46,8 +46,14 @@ sys.path.append(os.path.join(os.path.dirname(__file__),
 from defines import CYPRESS_VID
 from defines import FX3_PID
 
-from fx3_controller import FX3ControllerError
-from fx3_controller import FX3Controller
+from usb_device import USBDeviceError
+from usb_device import USBDevice
+
+from boot_fx3 import BootFX3Error
+from boot_fx3 import BootFX3
+
+from prometheus_fx3 import PrometheusFX3Error
+from prometheus_fx3 import PrometheusFX3
 
 SLEEP_COUNT = 2
 
@@ -55,12 +61,37 @@ def enum(*sequential, **named):
   enums = dict(zip(sequential, range(len(sequential))), **named)
   return type('Enum', (), enums)
 
-USB_STATUS = enum ('FX3_CONNECTED',
-                   'FX3_NOT_CONNECTED',
+USB_STATUS = enum ('BOOT_FX3_CONNECTED',
+                   'DEVICE_NOT_CONNECTED',
+                   'PROMETHEUS_FX3_CONNECTED',
                    'FX3_PROGRAMMING_FAILED',
                    'FX3_PROGRAMMING_PASSED',
                    'BUSY',
                    'USER_APPLICATION')
+
+class DelayThread(threading.Thread):
+    def __init__(self, server, timeout = 2):
+        super(DelayThread, self).__init__()
+        self.timeout = timeout
+        self.lock = threading.Lock()
+        self.server = server
+
+    def run(self):
+        time.sleep(self.timeout)
+        try:
+            if self.lock.acquire(False):
+                #print "Got a lock"
+                self.server.update_usb()
+            else:
+                self.server.delay_cleanup()
+                return
+
+        except PrometheusUSBError, err:
+            pass
+        finally:
+            #print "Release the lock"
+            self.lock.release()
+            self.server.delay_cleanup()
 
 class ListenThread(threading.Thread):
 
@@ -68,6 +99,7 @@ class ListenThread(threading.Thread):
         super(ListenThread, self).__init__()
         self.file_path = file_path
         self.server = server
+        self.lock = threading.Lock()
 
     def run(self):
         file_path = '/var/log/syslog'
@@ -85,9 +117,16 @@ class ListenThread(threading.Thread):
                 time.sleep(.2)
                 start = time.time()
                 try:
-                    self.server.update_usb()
+                    if self.lock.acquire(False):
+                        self.server.update_usb()
+                    else:
+                        print "Didn't get lock"
+                        continue
                 except PrometheusUSBError, err:
                     pass
+
+                finally:
+                    self.lock.release()
 
     def kill(self):
         if self.p is not None:
@@ -105,109 +144,118 @@ class PrometheusUSB(QObject):
     Class to handle communication between the processor and host computer
     """
     def __init__(self,
-                 usb_device_status_cb):
+                 usb_device_status_cb,
+                 device_to_host_comm_cb):
         super (PrometheusUSB, self).__init__()
         self.cypress_fx3_dev = None
         self.prometheus_dev = None
+
         self.usb_device_status_cb = usb_device_status_cb
-        self.status = USB_STATUS.FX3_NOT_CONNECTED
+        self.device_to_host_comm_cb = device_to_host_comm_cb
+        self.status = USB_STATUS.DEVICE_NOT_CONNECTED
+
+        self.boot_fx3 = BootFX3()
+        self.prometheus_fx3 = PrometheusFX3(self)
+        self.delay_thread = None
+
         try:
             self.update_usb()
         except PrometheusUSBError, err:
             pass
 
-        self.fx3 = None
         self.listen_thread = ListenThread("/var/log/syslog", self)
         self.listen_thread.start()
-
-
-    def list_usb_devices(self):
-        try:
-            usb_devices = usb.core.find(find_all = True)
-        except usb.core.USBError, err:
-            print "USB Error: %s" % str(err)
-            return []
-        return usb_devices
-
-    def get_usb_device(self, vid, pid):
-        dev = None
-        try:
-            dev = usb.core.find(idVendor=vid, idProduct=pid)
-        except:
-            raise PrometheusUSBError("Failed to get USB Device: %s" % str(err))
-        #Activate the device (to the control configuratio)
-        if dev is None:
-            raise PrometheusUSBError("Failed to find USB Device with VID: %04X:%04X" % (vid, pid))
-        return dev
+        self.lock = threading.Lock()
 
     def update_usb(self):
-        #print "Update USB"
-        #Check if my current handle to the FX3 is None
-        if self.cypress_fx3_dev is None:
-            #if so see if the there is a FX3 device attached to the USB port
-            self.cypress_fx3_dev = self.get_usb_device(CYPRESS_VID, FX3_PID)
+        boot_vid = self.boot_fx3.get_vid()
+        boot_pid = self.boot_fx3.get_pid()
+        #print "Boot VID:PID %04X:%04X" % (boot_vid, boot_pid)
 
-            if self.cypress_fx3_dev is None:
-                #print "\tNot Connected"
-                self._set_status(USB_STATUS.FX3_NOT_CONNECTED)
-                self.fx3 = None
-                raise PrometheusUSBError("Cypress FX3 Not Found")
-            else:
-                #print "\tConnected"
-                #print "Found: %X:%X" % (self.cypress_fx3_dev.idVendor, self.cypress_fx3_dev.idProduct)
-                #self.cypress_fx3_dev.set_configuration()
-                self.fx3 = FX3Controller(self.cypress_fx3_dev)
-                self._set_status(USB_STATUS.FX3_CONNECTED)
-        else:
-            #Check if the fx3 chip was disconnected
-            devices = self.list_usb_devices()
-            for device in devices:
-                #print "Checking: VID:PID %X:%X" % (device.idVendor, device.idProduct)
-                if device.idVendor == CYPRESS_VID and device.idProduct == FX3_PID:
+        p_vid = self.prometheus_fx3.get_vid()
+        p_pid = self.prometheus_fx3.get_pid()
+        #print "Prometheus VID:PID %04X:%04X" % (p_vid, p_pid)
+
+        devices = usb.core.find(find_all = True)
+        for device in devices:
+            #print "Scanning: %04X:%04X" % (device.idVendor, device.idProduct)
+            
+            if device.idVendor == boot_vid and device.idProduct == boot_pid:
+                if self.boot_fx3.is_connected():
+                    self.prometheus_fx3.release()
+                    print "Boot Device Attached"
+                    return
+                else:
+                    try:
+                        self.prometheus_fx3.release()
+                        self.boot_fx3.connect()
+                        self._set_status(USB_STATUS.BOOT_FX3_CONNECTED)
+                    except BootFX3Error, err:
+                        self._set_status(USB_STATUS.DEVICE_NOT_CONNECTED)
+                        raise PrometheusUSBError(str(err))
+                    except USBDeviceError, err:
+                        self._set_status(USB_STATUS.DEVICE_NOT_CONNECTED)
+                        raise PrometheusUSBError(str(err))
+                    except usb.core.USBError, err:
+                        self._set_status(USB_STATUS.DEVICE_NOT_CONNECTED)
+                        raise PrometheusUSBError(str(err))
+                    #Set Status
+                    return
+            
+            if device.idVendor == p_vid and device.idProduct == p_pid:
+                if self.prometheus_fx3.is_connected():
+                    self.boot_fx3.release()
+                    print "Prometheus FX3 is attached"
+                    return
+                else:
+                    print "Not Connected to FX3, attempting to connect"
+                    try:
+                        self.boot_fx3.release()
+                        self.prometheus_fx3.connect()
+                        self._set_status(USB_STATUS.PROMETHEUS_FX3_CONNECTED)
+                    except PrometheusFX3Error, err:
+                        self._set_status(USB_STATUS.DEVICE_NOT_CONNECTED)
+                        raise PrometheusUSBError(str(err))
+                    except USBDeviceError, err:
+                        self._set_status(USB_STATUS.DEVICE_NOT_CONNECTED)
+                        raise PrometheusUSBError(str(err))
+                    except usb.core.USBError, err:
+                        self._set_status(USB_STATUS.DEVICE_NOT_CONNECTED)
+                        raise PrometheusUSBError(str(err))
+                    #Set Status
                     return
 
-            self.cypress_fx3_dev = None
-            self._set_status(USB_STATUS.FX3_NOT_CONNECTED)
-
+           
+        #self.boot_fx3.release()
+        #self.prometheus_fx3.release()
+        #self._set_status(USB_STATUS.DEVICE_NOT_CONNECTED)
 
     def is_connected(self):
-        if self.cypress_fx3_dev is None:
-            #print "Not Connected"
-            return False
-        #print "Connected"
-        return True
+        if self.prometheus_fx3.is_connected() or self.boot_fx3.is_connected():
+            return True
+        return False
 
     def download_program(self, buf):
-        if self.cypress_fx3_dev is not None:
+        if self.boot_fx3.is_connected():
             try:
-                self.fx3 = FX3Controller(self.cypress_fx3_dev)
-                self._set_status(USB_STATUS.BUSY)
-                self.fx3.download(buf)
+                self.boot_fx3.download(buf)
+                self.boot_fx3.release()
                 self._set_status(USB_STATUS.FX3_PROGRAMMING_PASSED)
-            except FX3ControllerError, err:
+                self.delay_start()
+            except BootFX3Error, err:
                 self._set_status(USB_STATUS.FX3_PROGRAMMING_FAILED)
                 raise PrometheusUSBError("Error Programming FX3: %s" % str(err))
         else:
             raise PrometheusUSBError("FX3 Not Connected")
-        
+
     def vendor_reset(self, vid, pid):
-        if self.cypress_fx3_dev is not None:
-            raise PrometheusUSBWarning("Device is already connected to the default image")
-        #Attemp to attach to the device with the given VID PID
-        dev = self.get_usb_device(vid, pid)
-        try:
-            dev.ctrl_transfer(
-                bmRequestType = 0x40,   #VRequest, To the devce, Endpoint
-                bRequest      = 0xE0,   #Reset
-                wValue        = 0x00,   
-                wIndex        = 0x00,
-                timeout       = 1000)    #Timeout                    = 1 second
-
-        except usb.core.USBError, err:
-            print "USB Error: %s" % str(err)
-            return False
-
-        return True
+        if self.prometheus_fx3.is_connected():
+            self.prometheus_fx3.reset_to_boot()
+            self._set_status(USB_STATUS.DEVICE_NOT_CONNECTED)
+            #print "Delay a usb scan for a couple of seconds"
+            self.delay_start(timeout = 4)
+            return True
+        return False
 
     def _set_status(self, status):
         self.status = status
@@ -217,10 +265,28 @@ class PrometheusUSB(QObject):
     def get_usb_status(self):
         return self.status
 
+    def delay_start(self, timeout = 2):
+        if self.delay_thread is None:
+            self.delay_thread = DelayThread(self, timeout)
+            self.delay_thread.start()
+
+    def delay_cleanup(self):
+        self.delay_thread = None
+
+    def host_to_device_comm(self, text):
+        if self.prometheus_fx3:
+            self.prometheus_fx3.host_to_device_comm(text)
+
+    def device_to_host_comm(self, name, level, text):
+        self.device_to_host_comm_cb(name, level, text)
+    
     def shutdown(self):
         if self.cypress_fx3_dev is not None:
             self.cypress_fx3_dev.reset()
             self.cypress_fx3_dev = None
+        if self.prometheus_fx3:
+            self.prometheus_fx3.shutdown()
+
         self.listen_thread.kill()
         self.listen_thread.join()
 

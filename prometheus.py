@@ -86,16 +86,18 @@ EPILOG = "\n"\
     "\tPerform a vendor_reset on a possible user configuration\n"\
     "\n"
 
-SERVER_NOT_CONNECTED     = "Not Connected"
-SERVER_CONNECTED         = "Connected"
-SERVER_WAITING           = "Waiting for User to send all Data then close connection"
+SERVER_NOT_CONNECTED                    = "Not Connected"
+SERVER_CONNECTED                        = "Connected"
+SERVER_WAITING                          = "Waiting for User to send all Data then close connection"
 
-USB_DEVICE_CONNECTED     = "Device Connected"
-USB_DEVICE_NOT_CONNECTED = "Device Not Connected"
-USB_BUSY                 = "USB Busy"
-USB_FAILED               = "Device Failed to Program"
-USB_PROGRAMMED           = "Device Successfully Programmed"
-USB_USER_APPLICATION     = "User Application Active"
+USB_DEVICE_CONNECTED                    = "Device Connected"
+USB_DEVICE_NOT_CONNECTED                = "Device Not Connected"
+USB_BUSY                                = "USB Busy"
+USB_FAILED                              = "Device Failed to Program"
+USB_PROGRAMMED                          = "Device Successfully Programmed"
+USB_USER_APPLICATION                    = "User Application Active"
+
+USB_USER_PROMETHEUS_FX3_CONNECTED       = "Prometheus Device Connected"
 
 white = '\033[0m'
 gray = '\033[90m'
@@ -117,10 +119,12 @@ def cl_status(level = 2, text = ""):
     elif level == 2:
         print "%sInfo: %s%s" % (white, text, white)
     elif level == 3:
-        print "%sWarning: %s%s" % (yello, text, white)
+        print "%sImportant: %s%s" % (blue, text, white)
     elif level == 4:
-        print "%sError: %s%s" % (red, text, white)
+        print "%sWarning: %s%s" % (yellow, text, white)
     elif level == 5:
+        print "%sError: %s%s" % (red, text, white)
+    elif level == 6:
         print "%sCritical: %s%s" % (red, text, white)
     else:
         print "Unknown Level (%d) Text: %s" % (level, text)
@@ -129,7 +133,7 @@ class Prometheus(object):
     """
     """
 
-    def __init__(self):
+    def __init__(self, disable_server):
         super (Prometheus, self).__init__()
 
         self.data_server_status    = SERVER_NOT_CONNECTED
@@ -138,13 +142,16 @@ class Prometheus(object):
         self.usb_data = ""
         self.gui = None
 
-        self.server = PrometheusServer(self,
-                                       self.data_server_status_cb,
-                                       self.data_server_activity_cb,
-                                       self.controller_server_status,
-                                       self.controller_server_activity)
+        self.server = None
+        if not disable_server:
+            self.server = PrometheusServer(self,
+                                           self.data_server_status_cb,
+                                           self.data_server_activity_cb,
+                                           self.controller_server_status,
+                                           self.controller_server_activity)
 
-        self.usb_server = PrometheusUSB(self.usb_device_status_cb)
+        self.usb_server = PrometheusUSB(self.usb_device_status_cb,
+                                        self.device_to_host_comm)
         self.error = ""
 
     def init_gui(self):
@@ -190,7 +197,7 @@ class Prometheus(object):
             f.close()
         except IOError, err:
             self.error = str(err)
-            self.status(4, "Error Opening File: %s" % self.error)
+            self.status(5, "Error Opening File: %s" % self.error)
             return False
 
         client = PrometheusClient()
@@ -199,7 +206,7 @@ class Prometheus(object):
             client.send_data(buf)
         except PrometheusClientError, err:
             self.error = str(err)
-            self.status(4, "Prometheus Client Error: %s" % self.error)
+            self.status(5, "Prometheus Client Error: %s" % self.error)
             return False
 
         return True
@@ -220,11 +227,11 @@ class Prometheus(object):
             Nothing
         """
         try:
-            self.status(2, "Programming Device over USB")
+            self.status(3, "Programming Device over USB")
             self.usb_server.download_program(buf)
         except PrometheusUSBError, err:
             self.error = str(err)
-            self.status(4, "Failed to program USB: %s" % self.error)
+            self.status(5, "Failed to program USB: %s" % self.error)
             return False
 
     def get_error(self):
@@ -259,7 +266,7 @@ class Prometheus(object):
             Nothing
         """
         if usb_server.is_connected():
-            self.status(2, "Reset Device")
+            self.status(3, "Reset Device")
             self.usb_server.reset()
             return True
 
@@ -272,7 +279,8 @@ class Prometheus(object):
         """
         self.status(2, "Shutdown Server")
         self.usb_server.shutdown()
-        self.server.shutdown()
+        if self.server:
+            self.server.shutdown()
 
     def controller_server_status(self, connected):
         """
@@ -284,11 +292,11 @@ class Prometheus(object):
                 self.status(0, "looking for a USB Device")
                 self.usb_server.update_usb()
             except PrometheusUSBError, err:
-                self.status(4, str(err))
+                self.status(5, str(err))
                 return
 
             if self.usb_server.is_connected():
-                self.status(2, "Found a USB Device")
+                self.status(3, "Found a USB Device")
             #print "program status is connected"
             #Send status update
             self.control_server_status = SERVER_CONNECTED
@@ -345,7 +353,7 @@ class Prometheus(object):
             print "Updated server connected"
         else:
             self.data_server_status = SERVER_NOT_CONNECTED
-            self.status(3, "Client disconnected to data server")
+            self.status(3, "Client disconnected from data server")
             print "Server is not connected"
             if self.gui:
                 self.gui.data_server_disconnected()
@@ -369,39 +377,58 @@ class Prometheus(object):
     def usb_device_status_cb(self, status):
         #print "USB Main Callback"
         #self.status(0, "USB Device CB: %d" % status)
-        if status == USB_STATUS.FX3_CONNECTED:
+        if status == USB_STATUS.BOOT_FX3_CONNECTED:
             if self.usb_status != USB_DEVICE_CONNECTED:
                 self.usb_status = USB_DEVICE_CONNECTED
-                self.status(2, self.usb_status)
+                self.status(3, self.usb_status)
                 if self.gui:
                     self.gui.usb_connected()
-        elif status == USB_STATUS.FX3_NOT_CONNECTED:
+        elif status == USB_STATUS.DEVICE_NOT_CONNECTED:
             if self.usb_status != USB_DEVICE_NOT_CONNECTED:
                 self.usb_status = USB_DEVICE_NOT_CONNECTED
                 self.status(2, self.usb_status)
                 if self.gui:
                     self.gui.usb_disconnected()
+
         elif status == USB_STATUS.FX3_PROGRAMMING_FAILED:
             if self.usb_status != USB_FAILED:
                 self.usb_status = USB_FAILED
-                self.status(4, self.usb_status)
+                self.status(5, self.usb_status)
+
         elif status == USB_STATUS.FX3_PROGRAMMING_PASSED:
             if self.usb_status != USB_PROGRAMMED:
                 self.usb_status = USB_PROGRAMMED
                 self.status(2, self.usb_status)
+
         elif status == USB_STATUS.BUSY:
             if self.usb_status != USB_BUSY:
                 self.usb_status = USB_BUSY
-                self.status(3, self.usb_status)
+                self.status(2, self.usb_status)
+
         elif status == USB_STATUS.USER_APPLICATION:
             if self.usb_status != USB_USER_APPLICATION:
                 self.usb_status = USB_USER_APPLICATION
                 self.status(2, self.usb_status)
+
+        elif status == USB_STATUS.PROMETHEUS_FX3_CONNECTED:
+            if self.usb_status != USB_USER_PROMETHEUS_FX3_CONNECTED:
+                self.usb_status = USB_USER_PROMETHEUS_FX3_CONNECTED
+                self.status(3, self.usb_status)
+
+
         #print "USB Main Callback Finished"
 
     def host_to_device_comm(self, text):
         #Write data to the device
         self.status(0, "Write Data to the device")
+        self.usb_server.host_to_device_comm(text)
+        
+
+    def device_to_host_comm(self, name, level, text):
+        #self.status(0, "Data from: %s: %s" % (name, text0))
+        #self.gui.
+        self.gui.comm.in_data(level, text)
+               
 
     def vendor_reset(self, vid, pid):
         #Send a Vendor Reset to put the device back into a known configuration
@@ -430,11 +457,13 @@ if __name__ == "__main__":
     #Add arguments to the parser
     parser.add_argument("-d", "--debug", action='store_true',
             help="Output test debug information")
+    parser.add_argument("-ns", "--no_server", action='store_true',
+            help="Disable the Socket server (Good for debugging)")
     parser.add_argument("--daemon", action="store_true",
             help="Start Prometheus comm as a daemon")
     parser.add_argument("-s", "--status", action='store_true',
             help="Returns the status of both servers and usb")
-    parser.add_argument("-vr", "--vendor_reset", 
+    parser.add_argument("-vr", "--vendor_reset",
             type=str,
             nargs=1,
             help="Perform a Vendor Reset on a specified VID:UID")
@@ -451,12 +480,16 @@ if __name__ == "__main__":
 
     parser.parse_args()
     args = parser.parse_args()
+    disable_server = False
 
     #Check if the server socket is open
 
     if args.debug:
         cl_status(1, "Debug Enabled")
         debug = True
+
+    if args.no_server:
+        disable_server = True
 
     if args.vendor_reset:
         cl_status (0, "Perform Vendor Reset on %s" % args.vendor_reset[0])
@@ -516,8 +549,6 @@ if __name__ == "__main__":
             pc = PrometheusClient()
             pc.send_data(buf)
 
-             
-
         except PrometheusClientError, err:
             cl_status(4, str(err))
         #cl_status (2, "\tAttempts to locate a pre-existing server")
@@ -527,7 +558,7 @@ if __name__ == "__main__":
     #Visual Server Mode
     cl_status(0, "Starting Main GUI")
     app = QApplication(sys.argv)
-    prometheus = Prometheus()
+    prometheus = Prometheus(disable_server)
     prometheus.init_gui()
     sys.exit(app.exec_())
 

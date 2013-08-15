@@ -62,6 +62,36 @@ class PrometheusComm (QWidget):
         self.in_format.setForeground(Qt.black)
         self.in_format.setBackground(Qt.gray)
 
+        #Set Format
+        self.verbose_format = QTextCharFormat()
+        self.verbose_format.setForeground(Qt.white)
+        self.verbose_format.setBackground(Qt.black)
+
+        self.debug_format = QTextCharFormat()
+        self.debug_format.setForeground(Qt.green)
+        self.debug_format.setBackground(Qt.blue)
+
+        self.info_format = QTextCharFormat()
+        self.info_format.setForeground(Qt.black)
+        self.info_format.setBackground(Qt.white)
+
+        self.important_format = QTextCharFormat()
+        self.important_format.setForeground(Qt.blue)
+        self.important_format.setBackground(Qt.black)
+
+        self.warning_format = QTextCharFormat()
+        self.warning_format.setForeground(Qt.yellow)
+        self.warning_format.setBackground(Qt.black)
+
+        self.error_format = QTextCharFormat()
+        self.error_format.setForeground(Qt.red)
+        self.error_format.setBackground(Qt.white)
+
+        self.critical_format = QTextCharFormat()
+        self.critical_format.setForeground(Qt.red)
+        self.critical_format.setBackground(Qt.black)
+
+
         self.connect(self.send_button, SIGNAL("clicked()"), self.send_pressed)
         self.connect(self.in_command, SIGNAL("returnPressed()"), self.send_pressed)
 
@@ -87,9 +117,23 @@ class PrometheusComm (QWidget):
         #text = "Host: %s" % text
         self.insert_text("Host", text, self.out_format)
 
-    def in_data(self, text):
+    def in_data(self, level, text):
         #text = "Device: %s" % text
-        self.insert_text("Device", text, self.in_format)
+        fmt = self.in_format
+        if level == 0:
+            fmt = self.verbose_format
+        elif level == 1:
+            fmt = self.debug_format
+        elif level == 2:
+            fmt = self.info_format
+        elif level == 3:
+            fmt = self.warning_format
+        elif level == 4:
+            fmt = self.error_format
+        elif level == 5:
+            fmt = self.critical_format
+
+        self.insert_text("Device", text, fmt)
 
 
     def send_pressed(self):
