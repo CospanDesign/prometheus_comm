@@ -114,14 +114,29 @@ class USBDevice (object):
         """
         if self.dev is None:
             raise USBDeviceError("Device is None")
+        try:
+            self.dev.ctrl_transfer(
+                bmRequestType = 0x40,   #VRequest, To the devce, Endpoint
+                bRequest      = 0xE0,   #Reset
+                wValue        = 0x00,
+                wIndex        = 0x00,
+                timeout       = 1000)   #Timeout    = 1 second
+            self.release()
+        except usb.core.USBError, err:
+            if err.errno == 110:
+                return
+            if err.errno == 5:
+                print "Device was disconnected"
+                self.usb_server.update_usb()
+                return 
+            if err.errno == 16:
+                print "Device was disconnected"
+                self.usb_server.update_usb()
+                return 
+            else:
+                print "Unknown USB Error: %s" % str(err)
+                return
 
-        self.dev.ctrl_transfer(
-            bmRequestType = 0x40,   #VRequest, To the devce, Endpoint
-            bRequest      = 0xE0,   #Reset
-            wValue        = 0x00,
-            wIndex        = 0x00,
-            timeout       = 1000)   #Timeout                    = 1 second
-        self.release()
 
     def get_device_info(self):
         """

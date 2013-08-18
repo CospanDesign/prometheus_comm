@@ -47,7 +47,8 @@ class PrometheusFX3(USBDevice):
     def on_connect(self):
         print "Called when a connect occurs"
         #Set up the listeners
-        #self.dev.set_configuration()
+        #self.dev.set_configuration(self.configuration)
+
         with self.usb_lock:
             self.add_listener(self.read_logger)
         #self.configuration = self.dev.get_active_configuration()
@@ -58,6 +59,7 @@ class PrometheusFX3(USBDevice):
 
     def read_logger(self):
         #print "Read the Logger"
+        data = None
         try:
             data = self.dev.read(0x81, 128, 0, 10)
         except usb.core.USBError, err:
@@ -71,6 +73,9 @@ class PrometheusFX3(USBDevice):
                 print "Device was disconnected"
                 self.usb_server.update_usb()
                 return 
+            else:
+                print "Unknown USB Error: %s" % str(err)
+                return
 
         #print "Read Log: %s" % str(data)
         self.usb_server.device_to_host_comm(self.name, data[0], data[8:].tostring())
