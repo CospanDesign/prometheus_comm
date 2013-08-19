@@ -138,22 +138,48 @@ class PrometheusFX3(USBDevice):
                 else:
                     raise USBDeviceError("Unknown USB Device Error: %s" % str(err))
 
-        time.sleep(.5)
+        print "Sleep for a few seconds" 
+        time.sleep(3)
 
+        count = 0
         with self.usb_lock:
-            try:
-                self.dev.write(0x02, bit_buf, 0, 3000)
-            except usb.core.USBError, err:
-                if err.errno == 110:
-                    raise USBDeviceError("Device timed out while attempting to send FPGA Config")
-                if err.errno == 5:
-                    self.usb_server.update_usb()
-                    raise USBDeviceError("Device was disconnected")
+            while len(bit_buf) > 64:
+                print "Sending: %d" % count
+                buf = bit_buf[:63]
+                bit_buf = bit_buf[64:]
 
-                if err.errno == 16:
-                    self.usb_server.update_usb()
-                    raise USBDeviceError("Device was disconnected")
+                try:
+                    self.dev.write(0x02, buf, timeout=3000)
+                except usb.core.USBError, err:
+                    if err.errno == 110:
+                        raise USBDeviceError("Device timed out while attempting to send FPGA Config")
+                    if err.errno == 5:
+                        self.usb_server.update_usb()
+                        raise USBDeviceError("Device was disconnected")
+                
+                    if err.errno == 16:
+                        self.usb_server.update_usb()
+                        raise USBDeviceError("Device was disconnected")
+                
+                    else:
+                        raise USBDeviceError("Unknown USB Device Error: %s" % str(err))
 
-                else:
-                    raise USBDeviceError("Unknown USB Device Error: %s" % str(err))
+            if len(bit_buf) > 0:
+                try:
+                    self.dev.write(0x02, bit_buf, timeout=3000)
+                except usb.core.USBError, err:
+                    if err.errno == 110:
+                        raise USBDeviceError("Device timed out while attempting to send FPGA Config")
+                    if err.errno == 5:
+                        self.usb_server.update_usb()
+                        raise USBDeviceError("Device was disconnected")
+                
+                    if err.errno == 16:
+                        self.usb_server.update_usb()
+                        raise USBDeviceError("Device was disconnected")
+                
+                    else:
+                        raise USBDeviceError("Unknown USB Device Error: %s" % str(err))
+
+
 

@@ -33,7 +33,6 @@ import select
 import re
 import pyudev
 from pyudev.pyqt4 import MonitorObserver
-from subprocess import *
 
 import usb.core
 import usb.util
@@ -95,46 +94,6 @@ class DelayThread(threading.Thread):
             self.lock.release()
             self.server.delay_cleanup()
 
-class ListenThread(threading.Thread):
-
-    def __init__(self, file_path, server):
-        super(ListenThread, self).__init__()
-        self.file_path = file_path
-        self.server = server
-        self.lock = threading.Lock()
-
-    def run(self):
-        file_path = '/var/log/syslog'
-        self.p = Popen(['tail', '-f', file_path], stdout=PIPE)
-        self.p.stdout.flush()
-        start = time.time() - 100
-
-        self.ready = True
-        while self.ready:
-            data = self.p.stdout.readline()
-            end = time.time()
-            if end - start < SLEEP_COUNT:
-                continue
-            if re.search("usb", data):
-                time.sleep(.2)
-                start = time.time()
-                try:
-                    if self.lock.acquire(False):
-                        self.server.update_usb()
-                    else:
-                        print "Didn't get lock"
-                        continue
-                except PrometheusUSBError, err:
-                    pass
-
-                finally:
-                    self.lock.release()
-
-    def kill(self):
-        if self.p is not None:
-            self.p.kill()
-        self.ready = False
-
 class PrometheusUSBError(Exception):
     pass
 
@@ -175,12 +134,8 @@ class PrometheusUSB(QObject):
         self.observer.deviceEvent.connect(self.udev_device_event)
         print "Starting Udev monitor"
         self.monitor.start()
-
-        #devices = context.list_devices(subsystem="usb", DEVTYPE="usb_devices")
         #end pyudev
 
-        #self.listen_thread = ListenThread("/var/log/syslog", self)
-        #self.listen_thread.start()
         self.lock = threading.Lock()
 
     def udev_device_event(self, device):
@@ -192,17 +147,20 @@ class PrometheusUSB(QObject):
             if ((vendor_id == self.boot_fx3.get_vid()) and
                 (product_id == self.boot_fx3.get_pid())):
                 print "Boot FX3: %s" % device.action
-                self.update_usb()
+                if device.action == "add" or device.action == "remove":
+                    self.update_usb()
             
             if ((vendor_id == self.prometheus_fx3.get_vid()) and
                 (product_id == self.prometheus_fx3.get_pid())):
                 print "Prometheus FX3: %s" % device.action
-                self.update_usb()
+                if device.action == "add" or device.action == "remove":
+                    self.update_usb()
             
             if ((vendor_id == 0x0403) and
                 (product_id == 0x8530)):
-                print "Dionysus Detected: %s" % device.action
-                self.update_usb()
+                print "Dionysus: %s" % device.action
+                if device.action == "add" or device.action == "remove":
+                    self.update_usb()
 
         except KeyError, err:
             pass
@@ -332,9 +290,6 @@ class PrometheusUSB(QObject):
             self.cypress_fx3_dev = None
         if self.prometheus_fx3:
             self.prometheus_fx3.shutdown()
-
-        #self.listen_thread.kill()
-        #self.listen_thread.join()
 
 if __name__ == "__main__":
     print "Signal Test!"

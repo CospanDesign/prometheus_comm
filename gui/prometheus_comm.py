@@ -19,9 +19,17 @@
 #OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 #SOFTWARE.
 
+import sys
+import os
 
 from PyQt4.QtCore import *
 from PyQt4.QtGui import *
+
+sys.path.append(os.path.join(os.path.dirname(__file__),
+                os.pardir,
+                "common"))
+
+from common import cypress_error_translator
 
 class PrometheusComm (QWidget):
     """
@@ -119,6 +127,19 @@ class PrometheusComm (QWidget):
 
     def in_data(self, level, text):
         #text = "Device: %s" % text
+        if "error code" in text.lower():
+            #print "text: %s" % text
+            lowtext = text.lower()
+            length = len(lowtext.partition("error code:")[0])
+            error = lowtext.partition("error code:")[2]
+            error = error.strip()
+            #print "Error string: %s" % error
+            error = int(error)
+            error_string = cypress_error_translator.error_translate(error)
+            text = text[0:length - 1]
+            text += " " + error_string
+
+
         fmt = self.in_format
         if level == 0:
             fmt = self.verbose_format
