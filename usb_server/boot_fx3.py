@@ -110,6 +110,7 @@ class BootFX3(USBDevice):
             raise BootFX3Error("Checksum from file != Checksum from Data: 0x%X != 0x%X" % (read_checksum, checksum))
 
         time.sleep(1)
+        
         #Set the program entry point
         print "Sending Reset"
         try:
@@ -149,8 +150,6 @@ class BootFX3(USBDevice):
                     timeout = 1000)                                #Timeout 1 second
             except usb.core.USBError, err:
                 pass
-
-
 
             #Check if there was an error in the transfer
             if write_len != len(buf):

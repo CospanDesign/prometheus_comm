@@ -46,6 +46,21 @@ class PrometheusClient(object):
         super (PrometheusClient, self).__init__()
 
 
+    def send_mcu_firmware(self, data = None, hsot = 'localhost', port = DATA_PORT):
+        """
+        Similar to send dat ato the connected server except it will prepend
+        a header to the data to indicate that this is MCU firmware
+        """
+        data = "MCU:" + data
+        self.send_data(data, hsot, port)
+
+    def send_fpga_bitfile(self, data = None, hsot = 'localhost', port = DATA_PORT):
+        """
+        Similar to send dat ato the connected server except it will prepend
+        a header to the data to indicate that this is FPGA bit file
+        """
+        data = "FPGA:" + data
+        self.send_data(data, hsot, port)
 
     def send_data(self, data = None, host = 'localhost', port = DATA_PORT):
         """

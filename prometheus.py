@@ -211,7 +211,17 @@ class Prometheus(object):
 
         return True
 
-    def program_device(self, buf):
+    def program_fpga(self, buf):
+        try:
+            self.status(3, "Program FPGA with a file the size of %d" % len(buf))
+            self.usb_server.download_fpga_image(buf)
+        except PrometheusUSBError, err:
+            self.error = str(err)
+            self.status(5, "Failed to program FPGA: %s" % self.error)
+            return False
+        return True
+
+    def program_mcu(self, buf):
         """
         Program a device with the given byte array
 
@@ -233,6 +243,8 @@ class Prometheus(object):
             self.error = str(err)
             self.status(5, "Failed to program USB: %s" % self.error)
             return False
+
+        return True
 
     def get_error(self):
         """
@@ -370,8 +382,12 @@ class Prometheus(object):
         self.data_server_string = SERVER_WAITING
         #print "New Data"
         #print "%s\n" % data
-        buf = Array('B', data)
-        self.program_device(buf)
+        device = data.partition(":")[0]
+        buf = Array('B', data.partition(":")[2])
+        if device == "MCU":
+            self.program_mcu(buf)
+        else:
+            self.program_fpga(buf)
 
 
     def usb_device_status_cb(self, status):
@@ -511,11 +527,35 @@ if __name__ == "__main__":
         sys.exit(0)
 
     if args.program:
-        cl_status (2, "Run the system as a client")
+        cl_status (3, "Program the FPGA")
         status = get_server_status()
 
-        cl_status (2, "\tAttempt to locate a pre-existing server")
-        cl_status (2, "\tIf none is available then starts a server, then connect to it")
+        port = 0
+        data_server_ready = False
+        usb_attached = False
+        try:
+            port = get_data_port(status)
+            data_server_ready = is_data_server_ready(status)
+            usb_attached = is_usb_device_attached(status)
+            cl_status(1, "Data Port: 0x%X" % port)
+            if data_server_ready:
+                cl_status(1, "Data Server ready")
+            else:
+                cl_status(1, "Data Server not ready")
+                sys.exit(1)
+
+            file_path = args.program[0]
+            cl_status(3, "Openning File: %s" % file_path)
+            f = open(file_path, "r")
+            buf = f.read()
+            pc = PrometheusClient()
+            cl_status(3, "Sending Data")
+            pc.send_fpga_bitfile(buf)
+
+        except PrometheusClientError, err:
+            cl_status(4, str(err))
+            sys.exit(1)
+
         sys.exit(0)
 
     if args.program_processor:
@@ -547,12 +587,11 @@ if __name__ == "__main__":
             f = open(file_path, "r")
             buf = f.read()
             pc = PrometheusClient()
-            pc.send_data(buf)
+            pc.send_mcu_firmware(buf)
 
         except PrometheusClientError, err:
             cl_status(4, str(err))
-        #cl_status (2, "\tAttempts to locate a pre-existing server")
-        #cl_status (2, "\tIf none is available then starts a server, then connect to it")
+            sys.exit(1)
         sys.exit(0)
 
     #Visual Server Mode

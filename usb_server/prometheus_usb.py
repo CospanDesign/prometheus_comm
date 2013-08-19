@@ -31,6 +31,8 @@ import socket
 import threading
 import select
 import re
+import pyudev
+from pyudev.pyqt4 import MonitorObserver
 from subprocess import *
 
 import usb.core
@@ -147,6 +149,8 @@ class PrometheusUSB(QObject):
                  usb_device_status_cb,
                  device_to_host_comm_cb):
         super (PrometheusUSB, self).__init__()
+
+
         self.cypress_fx3_dev = None
         self.prometheus_dev = None
 
@@ -163,9 +167,45 @@ class PrometheusUSB(QObject):
         except PrometheusUSBError, err:
             pass
 
-        self.listen_thread = ListenThread("/var/log/syslog", self)
-        self.listen_thread.start()
+        #pyudev
+        self.context = pyudev.Context()
+        self.monitor = pyudev.Monitor.from_netlink(self.context)
+        self.monitor.filter_by(subsystem="usb")
+        self.observer = MonitorObserver(self.monitor)
+        self.observer.deviceEvent.connect(self.udev_device_event)
+        print "Starting Udev monitor"
+        self.monitor.start()
+
+        #devices = context.list_devices(subsystem="usb", DEVTYPE="usb_devices")
+        #end pyudev
+
+        #self.listen_thread = ListenThread("/var/log/syslog", self)
+        #self.listen_thread.start()
         self.lock = threading.Lock()
+
+    def udev_device_event(self, device):
+        try:
+            vendor_id = int(device["ID_VENDOR_ID"], 16)
+            product_id = int(device["ID_MODEL_ID"], 16)
+            #print "vendor id: %04X" % vendor_id
+            #print "product id: %04X" % product_id
+            if ((vendor_id == self.boot_fx3.get_vid()) and
+                (product_id == self.boot_fx3.get_pid())):
+                print "Boot FX3: %s" % device.action
+                self.update_usb()
+            
+            if ((vendor_id == self.prometheus_fx3.get_vid()) and
+                (product_id == self.prometheus_fx3.get_pid())):
+                print "Prometheus FX3: %s" % device.action
+                self.update_usb()
+            
+            if ((vendor_id == 0x0403) and
+                (product_id == 0x8530)):
+                print "Dionysus Detected: %s" % device.action
+                self.update_usb()
+
+        except KeyError, err:
+            pass
 
     def update_usb(self):
         boot_vid = self.boot_fx3.get_vid()
@@ -179,7 +219,7 @@ class PrometheusUSB(QObject):
         devices = usb.core.find(find_all = True)
         for device in devices:
             #print "Scanning: %04X:%04X" % (device.idVendor, device.idProduct)
-            
+
             if device.idVendor == boot_vid and device.idProduct == boot_pid:
                 if self.boot_fx3.is_connected():
                     self.prometheus_fx3.release()
@@ -201,7 +241,7 @@ class PrometheusUSB(QObject):
                         raise PrometheusUSBError(str(err))
                     #Set Status
                     return
-            
+
             if device.idVendor == p_vid and device.idProduct == p_pid:
                 if self.prometheus_fx3.is_connected():
                     self.boot_fx3.release()
@@ -225,7 +265,7 @@ class PrometheusUSB(QObject):
                     #Set Status
                     return
 
-           
+
         #self.boot_fx3.release()
         #self.prometheus_fx3.release()
         #self._set_status(USB_STATUS.DEVICE_NOT_CONNECTED)
@@ -234,6 +274,12 @@ class PrometheusUSB(QObject):
         if self.prometheus_fx3.is_connected() or self.boot_fx3.is_connected():
             return True
         return False
+
+    def download_fpga_image(self, buf):
+        if self.prometheus_fx3.is_connected():
+            self.prometheus_fx3.upload_fpga_image(buf)
+        else:
+            raise PrometheusUSBError("FX3 Not Connected")
 
     def download_program(self, buf):
         if self.boot_fx3.is_connected():
@@ -279,7 +325,7 @@ class PrometheusUSB(QObject):
 
     def device_to_host_comm(self, name, level, text):
         self.device_to_host_comm_cb(name, level, text)
-    
+
     def shutdown(self):
         if self.cypress_fx3_dev is not None:
             self.cypress_fx3_dev.reset()
@@ -287,8 +333,8 @@ class PrometheusUSB(QObject):
         if self.prometheus_fx3:
             self.prometheus_fx3.shutdown()
 
-        self.listen_thread.kill()
-        self.listen_thread.join()
+        #self.listen_thread.kill()
+        #self.listen_thread.join()
 
 if __name__ == "__main__":
     print "Signal Test!"

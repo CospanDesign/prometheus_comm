@@ -25,6 +25,7 @@
 
 from array import array as Array
 from usb_device import USBDevice
+import time
 import usb
 
 class PrometheusFX3Error(Exception):
@@ -53,7 +54,7 @@ class PrometheusFX3(USBDevice):
             self.add_listener(self.read_logger)
         #self.configuration = self.dev.get_active_configuration()
         #interface_number = cfg[(0,0)].bInterfaceNumber
-        
+
     def on_release(self):
         print "Called when a release occurs"
 
@@ -68,11 +69,11 @@ class PrometheusFX3(USBDevice):
             if err.errno == 5:
                 print "Device was disconnected"
                 self.usb_server.update_usb()
-                return 
+                return
             if err.errno == 16:
                 print "Device was disconnected"
                 self.usb_server.update_usb()
-                return 
+                return
             else:
                 print "Unknown USB Error: %s" % str(err)
                 return
@@ -90,12 +91,69 @@ class PrometheusFX3(USBDevice):
                 if err.errno == 5:
                     print "Device was disconnected"
                     self.usb_server.update_usb()
-                    return 
+                    return
                 if err.errno == 16:
                     print "Device was disconnected"
                     self.usb_server.update_usb()
-                    return 
+                    return
 
+    def upload_fpga_image(self, bit_buf):
+        if self.dev is None:
+            raise USBDeviceError("Device is None")
 
+        bit_buf_length = len(bit_buf)
+        length_buf = Array('B', [0, 0, 0, 0])
+        length_buf[3] = (bit_buf_length >> 24)  & 0x000000FF
+        length_buf[2] = (bit_buf_length >> 16)  & 0x000000FF
+        length_buf[1] = (bit_buf_length >> 8)   & 0x000000FF
+        length_buf[0] = (bit_buf_length)        & 0x000000FF
 
+        print "bit buf packets [3] [2] [1] [0]: %X %X %X %X" % (length_buf[3],
+                                                                length_buf[2],
+                                                                length_buf[1],
+                                                                length_buf[0])
+
+        print "Length: (Hex): 0x%08X, (Dec): %d" % (bit_buf_length, bit_buf_length)
+
+        with self.usb_lock:
+            try:
+                self.dev.ctrl_transfer(
+                    bmRequestType   = 0x40,   #VRequest, To the devce, Endpoint
+                    bRequest        = 0xB2,   #FPGA Configuration mode
+                    wValue          = 0x00,
+                    wIndex          = 0x00,
+                    data_or_wLength = length_buf.tostring(),
+                    timeout         = 1000)   #Timeout    = 1 second
+            except usb.core.USBError, err:
+                if err.errno == 110:
+                    raise USBDeviceError("Device Timed Out while attempting to send FPGA Config")
+                if err.errno == 5:
+                    self.usb_server.update_usb()
+                    raise USBDeviceError("Device was disconnected")
+
+                if err.errno == 16:
+                    self.usb_server.update_usb()
+                    raise USBDeviceError("Device was disconnected")
+
+                else:
+                    raise USBDeviceError("Unknown USB Device Error: %s" % str(err))
+
+        time.sleep(.5)
+
+        with self.usb_lock:
+            try:
+                self.dev.write(0x02, bit_buf, 0, 3000)
+            except usb.core.USBError, err:
+                if err.errno == 110:
+                    raise USBDeviceError("Device timed out while attempting to send FPGA Config")
+                if err.errno == 5:
+                    self.usb_server.update_usb()
+                    raise USBDeviceError("Device was disconnected")
+
+                if err.errno == 16:
+                    self.usb_server.update_usb()
+                    raise USBDeviceError("Device was disconnected")
+
+                else:
+                    raise USBDeviceError("Unknown USB Device Error: %s" % str(err))
 
