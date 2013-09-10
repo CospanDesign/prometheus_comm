@@ -25,6 +25,7 @@
 
 from array import array as Array
 from usb_device import USBDevice
+from usb_device import USBDeviceError
 import time
 import usb
 
@@ -97,7 +98,38 @@ class PrometheusFX3(USBDevice):
                     self.usb_server.update_usb()
                     return
 
+
+
+
+
+    def set_fpga_comm_mode(self):
+        with self.usb_lock:
+            try:
+                self.dev.ctrl_transfer(
+                    bmRequestType   = 0x40,   #VRequest, To the devce, Endpoint
+                    bRequest        = 0xB1,   #FPGA Comm Mode
+                    wValue          = 0x00,
+                    wIndex          = 0x00,
+                    data_or_wLength = "",
+                    timeout         = 1000)   #Timeout    = 1 second
+
+            except usb.core.USBError, err:
+                if err.errno == 110:
+                    raise USBDeviceError("Device Timeout set COMM Mode")
+                if err.errno == 5:
+                    self.usb_server.update_usb()
+                    raise USBDeviceError("Device was disconnected")
+
+                if err.errno == 16:
+                    self.usb_server.update_usb()
+                    raise USBDeviceError("Device was disconnected")
+
+                else:
+                    raise USBDeviceError("Unknown USB Device Error: %s" % str(err))
+
+
     def upload_fpga_image(self, bit_buf):
+        max_size = 512
         if self.dev is None:
             raise USBDeviceError("Device is None")
 
@@ -139,17 +171,22 @@ class PrometheusFX3(USBDevice):
                     raise USBDeviceError("Unknown USB Device Error: %s" % str(err))
 
         print "Sleep for a few seconds" 
-        time.sleep(3)
+        time.sleep(1)
 
         count = 0
         with self.usb_lock:
-            while len(bit_buf) > 64:
+
+            while len(bit_buf) > max_size:
                 print "Sending: %d" % count
-                buf = bit_buf[:63]
-                bit_buf = bit_buf[64:]
+                count += 1
+
+                buf = bit_buf[:max_size]
+                bit_buf = bit_buf[max_size:]
+                print "Length of buffer: %d" % len(buf)
 
                 try:
-                    self.dev.write(0x02, buf, timeout=3000)
+                    self.dev.write(0x02, buf, 0, timeout=3000)
+                    #self.dev.write(0x02, bit_buf, 0, timeout=3000)
                 except usb.core.USBError, err:
                     if err.errno == 110:
                         raise USBDeviceError("Device timed out while attempting to send FPGA Config")
@@ -164,9 +201,12 @@ class PrometheusFX3(USBDevice):
                     else:
                         raise USBDeviceError("Unknown USB Device Error: %s" % str(err))
 
+            print "FPGA Data Sent"
+
+            
             if len(bit_buf) > 0:
                 try:
-                    self.dev.write(0x02, bit_buf, timeout=3000)
+                    self.dev.write(0x02, bit_buf, 0, timeout=3000)
                 except usb.core.USBError, err:
                     if err.errno == 110:
                         raise USBDeviceError("Device timed out while attempting to send FPGA Config")
