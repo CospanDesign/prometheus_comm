@@ -459,6 +459,57 @@ class Prometheus(object):
             return False
         return True
 
+    def set_proc_base_mode(self):
+        self.status(4, "Set Processor Base Mode")
+        if not self.usb_server.is_prometheus_connected():
+            self.status(5, "Prometheus is not connected")
+            return
+
+    def set_proc_comm_mode(self):
+        self.status(4, "Set Processor Comm Mode")
+        if not self.usb_server.is_prometheus_connected():
+            self.status(5, "Prometheus is not connected")
+            return
+        self.usb_server.prometheus_write_config(address = 0xB1, data = [0])
+
+    def write_mcu_config(self, data = []):
+        self.status(3, "Write %s to MCU Config" % str(data))
+        if not self.usb_server.is_prometheus_connected():
+            self.status(5, "Prometheus is not connected")
+            return
+        self.usb_server.prometheus_write_config(address = 0xB3, data = data)
+
+    def read_mcu_config(self):
+        self.status(3, "Read MCU Config Data")
+        if not self.usb_server.is_prometheus_connected():
+            self.status(5, "Prometheus is not connected")
+            return
+        self.usb_server.prometheus_read_config(address = 0xB3, length = 1)
+
+    def test_gpif_comm(self, ping_test, read_test, write_test):
+        self.status(4, "Running GPIF Test for:")
+        if not (ping_test or read_test or write_test):
+            self.status(5, "\tNo test specified by user!")
+            return
+        if ping_test:
+            self.status(4, "\tPing Test")
+        if read_test:
+            self.status(4, "\tRead Test")
+        if write_test:
+            self.status(4, "\tWrite Test")
+
+        if not self.usb_server.is_prometheus_connected():
+            self.status(5, "Prometheus is not connected")
+            return
+
+    def start_debug(self):
+        self.status(3, "Start MCU debug logger")
+        if not self.usb_server.is_prometheus_connected():
+            self.status(5, "Prometheus is not connected")
+            return
+        self.usb_server.prometheus_start_debug()
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
     formatter_class=argparse.RawDescriptionHelpFormatter,

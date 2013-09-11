@@ -99,8 +99,58 @@ class PrometheusFX3(USBDevice):
                     return
 
 
+    def read_mcu_config(self, address = 0xB3, length = 1):
+        data = None
+        with self.usb_lock:
+            try:
+                data = self.dev.ctrl_transfer(
+                    bmRequestType   = 0xC0,     #VRequest, from the devce, Endpoint
+                    bRequest        = address,  #FPGA Comm Mode
+                    wValue          = 0x00,
+                    wIndex          = 0x00,
+                    data_or_wLength = length,
+                    timeout         = 3000)   #Timeout    = 1 second
 
+            except usb.core.USBError, err:
+                if err.errno == 110:
+                    raise USBDeviceError("Device Timeout set COMM Mode")
+                if err.errno == 5:
+                    self.usb_server.update_usb()
+                    raise USBDeviceError("Device was disconnected")
 
+                if err.errno == 16:
+                    self.usb_server.update_usb()
+                    raise USBDeviceError("Device was disconnected")
+
+                else:
+                    raise USBDeviceError("Unknown USB Device Error: %s" % str(err))
+        return data
+
+    def write_mcu_config(self, address = 0xB3, data = []):
+        with self.usb_lock:
+            try:
+                data = self.dev.ctrl_transfer(
+                    bmRequestType   = 0x40,     #VRequest, from the devce, Endpoint
+                    bRequest        = address,  #FPGA Comm Mode
+                    wValue          = 0x00,
+                    wIndex          = 0x00,
+                    data_or_wLength = data)
+                    #data_or_wLength = data,
+                    #timeout         = 1000)   #Timeout    = 1 second
+
+            except usb.core.USBError, err:
+                if err.errno == 110:
+                    raise USBDeviceError("Device Timeout set COMM Mode")
+                if err.errno == 5:
+                    self.usb_server.update_usb()
+                    raise USBDeviceError("Device was disconnected")
+
+                if err.errno == 16:
+                    self.usb_server.update_usb()
+                    raise USBDeviceError("Device was disconnected")
+
+                else:
+                    raise USBDeviceError("Unknown USB Device Error: %s" % str(err))
 
     def set_fpga_comm_mode(self):
         with self.usb_lock:

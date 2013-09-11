@@ -30,6 +30,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__),
                 "common"))
 
 from common import cypress_error_translator
+from mcu_controller import MCUController
 
 class PrometheusComm (QWidget):
     """
@@ -39,6 +40,7 @@ class PrometheusComm (QWidget):
     def __init__(self, prometheus):
         super(PrometheusComm, self).__init__()
         self.prometheus = prometheus
+        self.mcu_controller = MCUController(self.prometheus)
         layout = QVBoxLayout()
         self.comm = QTextEdit()
         self.in_command = QLineEdit()
@@ -51,6 +53,8 @@ class PrometheusComm (QWidget):
         command_layout.addWidget(self.in_command)
         command_layout.addWidget(self.send_button)
         layout.addLayout(command_layout)
+
+        layout.addWidget(self.mcu_controller)
         
         self.setLayout(layout)
 
@@ -134,8 +138,12 @@ class PrometheusComm (QWidget):
             error = lowtext.partition("error code:")[2]
             error = error.strip()
             #print "Error string: %s" % error
-            error = int(error)
-            error_string = cypress_error_translator.error_translate(error)
+            error_string = ""
+            try:
+                error = int(error, 16)
+                error_string = cypress_error_translator.error_translate(error)
+            except ValueError:
+                error_string = "error while reading from MCU Error: %s" % str(error_string)
             text = text[0:length - 1]
             text += " " + error_string
 

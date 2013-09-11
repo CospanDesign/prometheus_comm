@@ -233,6 +233,9 @@ class PrometheusUSB(QObject):
             return True
         return False
 
+    def is_prometheus_connected(self):
+        return self.prometheus_fx3.is_connected()
+
     def download_fpga_image(self, buf):
         if self.prometheus_fx3.is_connected():
             self.prometheus_fx3.upload_fpga_image(buf)
@@ -284,12 +287,28 @@ class PrometheusUSB(QObject):
     def device_to_host_comm(self, name, level, text):
         self.device_to_host_comm_cb(name, level, text)
 
+
+    def prometheus_read_config(self, address = 0xB3, length = 1):
+        return self.prometheus_fx3.read_mcu_config(address, length)
+
+    def prometheus_write_config(self, address = 0xB3, data = []):
+        self.prometheus_fx3.write_mcu_config(address, data)
+
+    def prometheus_start_debug(self):
+        self.prometheus_fx3.write_mcu_config(address = 0xB0, data = [0])
+
     def shutdown(self):
         if self.cypress_fx3_dev is not None:
             self.cypress_fx3_dev.reset()
             self.cypress_fx3_dev = None
         if self.prometheus_fx3:
             self.prometheus_fx3.shutdown()
+
+
+
+
+
+
 
 if __name__ == "__main__":
     print "Signal Test!"
