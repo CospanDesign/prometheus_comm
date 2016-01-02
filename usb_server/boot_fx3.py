@@ -165,7 +165,6 @@ class BootFX3(USBDevice):
                 print "Sent: %d bytes to address %d" % (len(data), start_address)
                 break
 
-
     def reset_to_boot(self):
         print "Do not reset the board when it is already in boot mode"
         pass

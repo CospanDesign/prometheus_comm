@@ -144,9 +144,10 @@ class PrometheusComm (QWidget):
                 error_string = cypress_error_translator.error_translate(error)
             except ValueError:
                 error_string = "error while reading from MCU Error: %s" % str(error_string)
+            except KeyError:
+                error_string = "Unrecognized MCU Error: 0x%02X" % error
             text = text[0:length - 1]
             text += " " + error_string
-
 
         fmt = self.in_format
         if level == 0:

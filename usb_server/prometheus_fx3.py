@@ -63,7 +63,7 @@ class PrometheusFX3(USBDevice):
         #print "Read the Logger"
         data = None
         try:
-            data = self.dev.read(0x81, 128, 0, 10)
+            data = self.dev.read(0x81, 128, 10)
         except usb.core.USBError, err:
             if err.errno == 110:
                 return
