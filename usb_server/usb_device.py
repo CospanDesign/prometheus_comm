@@ -74,8 +74,6 @@ class USBDeviceListenThread(threading.Thread):
     def kill(self):
         self.ready = False
 
-
-
 class USBDeviceError (Exception):
     pass
 
@@ -136,7 +134,6 @@ class USBDevice (object):
             else:
                 print "Unknown USB Error: %s" % str(err)
                 return
-
 
     def get_device_info(self):
         """

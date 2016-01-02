@@ -116,7 +116,7 @@ class ProcessorProgrammer (QWidget):
             raise ProcessorProgrammerError("Error Reading File: %s" % str(err))
 
         try:
-            self.prometheus.program_device(buf)
+            self.prometheus.program_mcu(buf)
         except PrometheusUSBError, err:
             self.prometheus.status(3, "Failed to Program USB: %s" % str(err))
 
