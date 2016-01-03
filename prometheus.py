@@ -486,7 +486,7 @@ class Prometheus(object):
             return
         self.usb_server.prometheus_read_config(address = 0xB3, length = 1)
 
-    def test_gpif_comm(self, ping_test, read_test, write_test):
+    def test_gpif_comm(self, ping_test, write_test, read_test):
         self.status(4, "Running GPIF Test for:")
         if not (ping_test or read_test or write_test):
             self.status(5, "\tNo test specified by user!")
@@ -495,8 +495,10 @@ class Prometheus(object):
             self.status(4, "\tPing Test")
         if read_test:
             self.status(4, "\tRead Test")
+            self.usb_server.prometheus_fx3.read(0x01000000, 128)
         if write_test:
             self.status(4, "\tWrite Test")
+            self.usb_server.prometheus_fx3.write(0x01000000, 0x0000000)
 
         if not self.usb_server.is_prometheus_connected():
             self.status(5, "Prometheus is not connected")

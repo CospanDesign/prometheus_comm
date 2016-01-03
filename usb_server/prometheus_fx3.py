@@ -29,10 +29,18 @@ from usb_device import USBDeviceError
 import time
 import usb
 
+COMM_OUT_PORT = 0x02
+COMM_IN_PORT = 0x82
+
+TIMEOUT = 100
+
+IDWORD = 0xCD15DBE5
+IDRESP = (~IDWORD)
+
+
+
 class PrometheusFX3Error(Exception):
     pass
-
-
 
 class PrometheusFX3(USBDevice):
 
@@ -97,7 +105,6 @@ class PrometheusFX3(USBDevice):
                     print "Device was disconnected"
                     self.usb_server.update_usb()
                     return
-
 
     def read_mcu_config(self, address = 0xB3, length = 1):
         data = None
@@ -177,7 +184,6 @@ class PrometheusFX3(USBDevice):
                 else:
                     raise USBDeviceError("Unknown USB Device Error: %s" % str(err))
 
-
     def upload_fpga_image(self, bit_buf):
         max_size = 512
         if self.dev is None:
@@ -220,7 +226,7 @@ class PrometheusFX3(USBDevice):
                 else:
                     raise USBDeviceError("Unknown USB Device Error: %s" % str(err))
 
-        print "Sleep for a few seconds" 
+        print "Sleep for a few seconds"
         time.sleep(1)
 
         count = 0
@@ -243,17 +249,17 @@ class PrometheusFX3(USBDevice):
                     if err.errno == 5:
                         self.usb_server.update_usb()
                         raise USBDeviceError("Device was disconnected")
-                
+
                     if err.errno == 16:
                         self.usb_server.update_usb()
                         raise USBDeviceError("Device was disconnected")
-                
+
                     else:
                         raise USBDeviceError("Unknown USB Device Error: %s" % str(err))
 
             print "FPGA Data Sent"
 
-            
+
             if len(bit_buf) > 0:
                 try:
                     self.dev.write(0x02, bit_buf, 0, timeout=3000)
@@ -263,13 +269,81 @@ class PrometheusFX3(USBDevice):
                     if err.errno == 5:
                         self.usb_server.update_usb()
                         raise USBDeviceError("Device was disconnected")
-                
+
                     if err.errno == 16:
                         self.usb_server.update_usb()
                         raise USBDeviceError("Device was disconnected")
-                
+
                     else:
                         raise USBDeviceError("Unknown USB Device Error: %s" % str(err))
+
+
+
+
+    def decode_error(self, err):
+        if err.errno == 110:
+            return "110 Error!"
+        if err.errno == 5:
+            self.usb_server.update_usb()
+            return "Device was disconnected"
+        if err.errno == 16:
+            self.usb_server.update_usb()
+            return "Device was disconnected"
+        else:
+            return "Unknown USB Error: %s" % str(err)
+
+    def read(self, address, length):
+        resp = self.nysa_command(0x02, address = address, length = length)
+        print "resp: %s" % resp
+
+    def write(self, address, write_data):
+        resp = self.nysa_command(0x01, address = address, raw_data = write_data)
+        print "resp: %s" % resp
+
+    def nysa_command(self, command, flags = None, address = 0x00, raw_data = Array('B'), length = 0):
+        while (len(raw_data) % 4) != 0:
+            raw_data.append(0)
+
+        data = Array('B')
+        resp = None
+        if flags is None:
+            flags = 0x00
+        data.append((flags & 0x0F) << 4 | (command & 0x0F))
+
+        if command != 0x02:
+            length = len(raw_data) / 4
+        data.append((length >> 24) & 0xFF)
+        data.append((length >> 16) & 0xFF)
+        data.append((length >>  8) & 0xFF)
+        data.append((length      ) & 0xFF)
+
+        data.append((address >> 24) & 0xFF)
+        data.append((address >> 16) & 0xFF)
+        data.append((address >>  8) & 0xFF)
+        data.append((address      ) & 0xFF)
+
+        if command == 0x01:
+            data.extend(raw_data)
+
+        else:
+            data.append(0x00)
+            data.append(0x00)
+            data.append(0x00)
+            data.append(0x00)
+
+        with self.usb_lock:
+            try:
+                self.dev.write(COMM_OUT_PORT, data)
+            except usb.core.USBError, err:
+                raise PrometheusFX3Error(self.decode_error(err))
+            try:
+                resp = self.dev.read(COMM_IN_PORT, 128)
+            except usb.core.USBError, err:
+                raise PrometheusFX3Error(self.decode_error(err))
+
+        return resp
+
+
 
 
 

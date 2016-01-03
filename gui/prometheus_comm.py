@@ -165,7 +165,6 @@ class PrometheusComm (QWidget):
 
         self.insert_text("Device", text, fmt)
 
-
     def send_pressed(self):
         #print "send pressed"
         text = self.in_command.text()
